@@ -17,7 +17,8 @@ Mỗi công việc hoàn thành được ghi kèm ngày, kết quả, căn cứ 
 
 | Mã | Công việc | Ngày cập nhật | Trạng thái thực tế | Bằng chứng hiện có |
 |---|---|---|---|---|
-| R01 | Học AI Agent, MAS, SDLC và thống nhất thuật ngữ | 23/11/2026 | Đã hoàn thiện báo cáo trên nhánh `R01` — **chờ chủ dự án rà soát và quyết định nghiệm thu** | [Báo cáo R01 tại commit 32b2ce7](https://github.com/DaoNgocDinh/ChuyenDeKTPM/blob/32b2ce78a1ab602259899d77d0943c624fd226d2/R01/bao_cao_R01.md), [commit `32b2ce7`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/commit/32b2ce78a1ab602259899d77d0943c624fd226d2), [bản tổng hợp bàn giao](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/3#issuecomment-7104514172) |
+| R01 | Học AI Agent, MAS, SDLC và thống nhất thuật ngữ | 23/11/2026 | Đã hoàn thiện báo cáo trên nhánh `R01` (Issue `#3` đã đóng trên GitHub) — **chờ chủ dự án xác nhận nghiệm thu báo cáo** | [Báo cáo R01 tại commit 32b2ce7](https://github.com/DaoNgocDinh/ChuyenDeKTPM/blob/32b2ce78a1ab602259899d77d0943c624fd226d2/R01/bao_cao_R01.md), [commit `32b2ce7`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/commit/32b2ce78a1ab602259899d77d0943c624fd226d2), [bản tổng hợp bàn giao](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/3#issuecomment-7104514172) |
+| R02 | Nghiên cứu ReAct và phân biệt workflow với agent | 24/11/2026 | Đã lập bản báo cáo nhỏ trên nhánh `R02` — **chờ chủ dự án rà soát và quyết định nghiệm thu** | [Báo cáo R02 tại commit 4df0cc2](https://github.com/DaoNgocDinh/ChuyenDeKTPM/blob/4df0cc2b42654875b04974c7383e4a5be2fb6843/R02/bao_cao_R02.md), [commit `4df0cc2`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/commit/4df0cc2b42654875b04974c7383e4a5be2fb6843), [ghi chú gốc tại `#4`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/4#issuecomment-7109633981) |
 
 ## Bản ghi P01 — 23/11/2026
 
@@ -84,9 +85,37 @@ Mỗi công việc hoàn thành được ghi kèm ngày, kết quả, căn cứ 
 - **Kiểm chứng:** Xác minh SHA256 tài liệu chuẩn, đọc lại `R01/bao_cao_R01.md` và `R10/so_cai_hoan_thanh.md` sau khi lưu/commit; giữ đúng ranh giới không tự đánh dấu hoàn thành `R01` hay `R10`.
 - **Giới hạn:** Bản cập nhật không xác nhận chủ dự án đã tự đọc hết mọi nguồn, không xác nhận `R01` đã được nghiệm thu và không phản ánh kết quả chạy thật hay thực nghiệm.
 
+## Theo dõi R02 — 24/11/2026 (chưa nghiệm thu)
+
+- **Công việc:** [R02 — issue #4](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/4) (tiền nhiệm: [R01 — issue #3](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/3)).
+- **Căn cứ cập nhật:** Chủ dự án yêu cầu viết bản báo cáo nhỏ trong nhánh riêng `R02` dựa trên [bình luận ghi chú `#issuecomment-7109633981`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/4#issuecomment-7109633981) (`2026-11-23T18:05:21Z`, tức `01:05` ngày `24/11/2026` GMT+7) và cập nhật lại `R10`.
+- **Đầu ra hiện có:** `R02/bao_cao_R02.md` trên nhánh `R02` (khởi tạo từ `main` commit `8c2fe7180ff08650b1488fe7d169ad9430427b73`), phiên bản tại commit [`4df0cc2b42654875b04974c7383e4a5be2fb6843`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/commit/4df0cc2b42654875b04974c7383e4a5be2fb6843).
+- **Nguồn chuẩn đối chiếu:** `Ke_hoach_nghien_cuu_he_thong_Multi_Agent.docx`, lập ngày 17/11/2026; SHA256 `975228EA14EDCE90CFECBBFE05C9911DD33B35FD1A4ACEF75577A9499D884C9F` (mục `2.1`, `2.3`).
+
+### Nội dung chính đã lập trong `R02/bao_cao_R02.md`
+
+- Tổng hợp và chuẩn hóa ghi chú của chủ dự án về **ReAct** (`arXiv:2210.03629v3`: cộng hưởng `Reason to Act` / `Act to Reason`, vai trò `Thought` / `Action` / `Observation`, giới hạn Bảng 2: `0%` ảo giác nhưng `47%` lỗi suy luận/lặp bước và `23%` lỗi tìm kiếm) và **Anthropic — *Building effective agents*** (`19/12/2024`: phân biệt *Workflow* vs *Agent*, 3 mẫu workflow trọng tâm *Prompt chaining*, *Orchestrator-workers*, *Evaluator-optimizer*, nguyên tắc đơn giản/ACI và giới hạn nguồn).
+- Bảng đối chiếu 4 mức tổ chức LLM (chat 1 lần · workflow có LLM · agent dùng tool · *workflow-based coordinated MAS*) kèm khẳng định không dùng việc gọi LLM 6 lần làm bằng chứng duy nhất của phối hợp.
+- Bảng phân tách ranh giới phần do **Model** đề xuất với phần do **State Machine & Host/Runtime** bắt buộc kiểm soát.
+- Ví dụ minh họa 5 bước một lượt `Dev` đọc mã, gọi tool qua MCP, quan sát kết quả runner thật và điều chỉnh (gắn nhãn rõ là ví dụ khái niệm, không phải log chạy thật).
+
+### Kiểm tra, phần còn mở và điều kiện nghiệm thu `R02`
+
+- **Trạng thái nghiệm thu:** `R02` **chưa** được đưa vào `Danh sách hoàn thành` và issue `#4` vẫn giữ `OPEN`. Chủ dự án cần tự rà soát `R02/bao_cao_R02.md` (đặc biệt phần `Thought/Action/Observation` mà chủ dự án ghi chú *"(Đã đọc khó viết và trình bày ra)"*, cùng bảng 4 mức và ví dụ `Dev`), xác nhận phạm vi/ngày tự đọc 2 nguồn gốc rồi quyết định nghiệm thu.
+- **Kỷ luật nguồn đọc:** Ngày `24/11/2026` là ngày Anti đã đọc toàn văn `arXiv:2210.03629v3` và `anthropic.com/engineering/building-effective-agents` để đối chiếu; không tự ghi thay ngày tự đọc của chủ dự án.
+- **Điểm chuyển sang bước sau:** Ngưỡng dừng chi tiết (số vòng/tool call tối đa, trần token) sẽ đặc tả tại `D08` và hiệu chỉnh qua pilot `E04`.
+
+### Nhật ký hỗ trợ AI trong lần cập nhật `R02`
+
+- **Đầu vào:** Bình luận `#issuecomment-7109633981` tại issue `#4`, toàn văn `arXiv:2210.03629v3`, toàn văn Anthropic *Building effective agents* (`19/12/2024`) và kế hoạch Word gốc (mục `2.1`, `2.3`).
+- **Phạm vi hỗ trợ:** Anti tạo nhánh `R02` từ `main` (`8c2fe71`), viết và commit bản báo cáo ngắn `R02/bao_cao_R02.md` tại `4df0cc2`, cập nhật sổ cái `R10/so_cai_hoan_thanh.md` trên nhánh `R10` và đăng bình luận đối chiếu tiêu chí `R02` tại issue `#12`.
+- **Kiểm chứng:** Đối chiếu đủ tiêu chí issue `#4`, kiểm tra chéo tệp cục bộ với nhánh `R02`/`R10`; không tự đánh dấu hoàn thành `R02` hay `R10`.
+- **Giới hạn:** Không thay thế việc chủ dự án tự kiểm tra hiểu biết và không chứa kết quả thực thi/thực nghiệm.
+
 ## Lịch sử cập nhật
 
 | Ngày | Nội dung | Căn cứ |
 |---|---|---|
 | 23/11/2026 | Khởi tạo sổ cái R10 và ghi nhận P01 hoàn thành; tạo file báo cáo P01 ở trạng thái chờ viết | Yêu cầu của chủ dự án và bằng chứng P01 được liên kết ở trên |
 | 23/11/2026 | Bổ sung mục theo dõi chờ nghiệm thu cho R01 kèm link báo cáo `R01/bao_cao_R01.md` tại commit `32b2ce7` trên nhánh `R01` (chưa ghi hoàn thành, chờ chủ dự án rà soát) | Yêu cầu của chủ dự án, bản bàn giao `#issuecomment-7104514172`, phiếu bàn giao `#issuecomment-7104515223` và commit `32b2ce7` |
+| 24/11/2026 | Bổ sung mục theo dõi chờ nghiệm thu cho R02 kèm link bản báo cáo nhỏ `R02/bao_cao_R02.md` tại commit `4df0cc2` trên nhánh `R02`, đồng thời ghi nhận hiện trạng Issue `#3` (R01) đã đóng trên GitHub nhưng vẫn chờ xác nhận nghiệm thu báo cáo | Yêu cầu của chủ dự án, bình luận `#issuecomment-7109633981` tại Issue `#4` và commit `4df0cc2` |
