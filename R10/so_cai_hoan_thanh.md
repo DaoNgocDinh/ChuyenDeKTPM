@@ -19,7 +19,8 @@ Mỗi công việc hoàn thành được ghi kèm ngày, kết quả, căn cứ 
 |---|---|---|---|---|
 | R01 | Học AI Agent, MAS, SDLC và thống nhất thuật ngữ | 23/11/2026 | Đã hoàn thiện báo cáo trên nhánh `R01` (Issue `#3` đã đóng trên GitHub) — **chờ chủ dự án xác nhận nghiệm thu báo cáo** | [Báo cáo R01 tại commit 32b2ce7](https://github.com/DaoNgocDinh/ChuyenDeKTPM/blob/32b2ce78a1ab602259899d77d0943c624fd226d2/R01/bao_cao_R01.md), [commit `32b2ce7`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/commit/32b2ce78a1ab602259899d77d0943c624fd226d2), [bản tổng hợp bàn giao](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/3#issuecomment-7104514172) |
 | R02 | Nghiên cứu ReAct và phân biệt workflow với agent | 25/11/2026 | Đã lập bản báo cáo nhỏ trên nhánh `R02` (Issue `#4` đã đóng trên GitHub ngày 25/11/2026) — **chờ chủ dự án xác nhận nghiệm thu báo cáo** | [Báo cáo R02 tại commit 4df0cc2](https://github.com/DaoNgocDinh/ChuyenDeKTPM/blob/4df0cc2b42654875b04974c7383e4a5be2fb6843/R02/bao_cao_R02.md), [commit `4df0cc2`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/commit/4df0cc2b42654875b04974c7383e4a5be2fb6843), [ghi chú gốc tại `#4`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/4#issuecomment-7109633981) |
-| R03 | Đọc MetaGPT và rút ra hợp đồng bàn giao có cấu trúc | 25/11/2026 | Đã lập bản báo cáo nhỏ trên nhánh `R03` — **chờ chủ dự án rà soát và quyết định nghiệm thu** | [Báo cáo R03 tại commit 0714851](https://github.com/DaoNgocDinh/ChuyenDeKTPM/blob/07148516d90f66ba6ddefe448c5a264bf5061a95/R03/bao_cao_R03.md), [commit `0714851`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/commit/07148516d90f66ba6ddefe448c5a264bf5061a95), [ghi chú đợt 1 `#5`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/5#issuecomment-7167211721), [bản hiệu chỉnh `#5`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/5#issuecomment-7167269005) |
+| R03 | Đọc MetaGPT và rút ra hợp đồng bàn giao có cấu trúc | 25/11/2026 | Đã lập bản báo cáo nhỏ trên nhánh `R03` (Issue `#5` đã đóng trên GitHub ngày 25/11/2026) — **chờ chủ dự án xác nhận nghiệm thu báo cáo** | [Báo cáo R03 tại commit 0714851](https://github.com/DaoNgocDinh/ChuyenDeKTPM/blob/07148516d90f66ba6ddefe448c5a264bf5061a95/R03/bao_cao_R03.md), [commit `0714851`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/commit/07148516d90f66ba6ddefe448c5a264bf5061a95), [ghi chú đợt 1 `#5`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/5#issuecomment-7167211721), [bản hiệu chỉnh `#5`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/5#issuecomment-7167269005) |
+| R04 | Đọc ChatDev và thiết kế phản hồi giữa Dev với Tester | 25/11/2026 | Đã lập bản báo cáo nhỏ trên nhánh `R04` — **chờ chủ dự án rà soát và quyết định nghiệm thu** | [Báo cáo R04 tại commit 01b0df2](https://github.com/DaoNgocDinh/ChuyenDeKTPM/blob/01b0df2721f5b5ed38f9ac37abbfb1d8a546fe18/R04/bao_cao_R04.md), [commit `01b0df2`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/commit/01b0df2721f5b5ed38f9ac37abbfb1d8a546fe18), [ghi chú đợt 1 `#6`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/6#issuecomment-7167694255), [bản chuẩn hóa `#6`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/6#issuecomment-7167728123) |
 
 ## Bản ghi P01 — 23/11/2026
 
@@ -140,6 +141,33 @@ Mỗi công việc hoàn thành được ghi kèm ngày, kết quả, căn cứ 
 - **Kiểm chứng:** Đối chiếu đủ việc cần làm & tiêu chí hoàn thành Issue `#5`, kiểm tra khớp SHA256 tài liệu chuẩn và đồng bộ tệp cục bộ với nhánh `R03`/`R10`; không tự đóng Issue `#5` và không tự đánh dấu hoàn thành `R03` hay `R10`.
 - **Giới hạn:** Không thay thế việc chủ dự án tự kiểm tra hiểu biết và không chứa dữ liệu chạy thật hay kết luận thực nghiệm.
 
+## Theo dõi R04 — 25/11/2026 (chưa nghiệm thu)
+
+- **Công việc:** [R04 — issue #6](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/6) (tiền nhiệm: [R03 — issue #5](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/5)).
+- **Căn cứ cập nhật:** Chủ dự án yêu cầu kiểm tra `R04`, tạo nhánh riêng `R04`, viết bản báo cáo nhỏ và cập nhật `R10`, dựa trên 2 bình luận của chủ dự án ngày `25/11/2026`: [`#issuecomment-7167694255`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/6#issuecomment-7167694255) (`23:13` GMT+7) và bản chuẩn hóa [`#issuecomment-7167728123`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/6#issuecomment-7167728123) (`23:15` GMT+7).
+- **Đầu ra hiện có:** `R04/bao_cao_R04.md` trên nhánh `R04` (khởi tạo từ `main` commit `8c2fe7180ff08650b1488fe7d169ad9430427b73`), phiên bản tại commit [`01b0df2721f5b5ed38f9ac37abbfb1d8a546fe18`](https://github.com/DaoNgocDinh/ChuyenDeKTPM/commit/01b0df2721f5b5ed38f9ac37abbfb1d8a546fe18).
+- **Nguồn chuẩn đối chiếu:** `Ke_hoach_nghien_cuu_he_thong_Multi_Agent.docx`, lập ngày 17/11/2026; SHA256 `975228EA14EDCE90CFECBBFE05C9911DD33B35FD1A4ACEF75577A9499D884C9F` (mục `2.4–2.5`, `3.4`, `3.7`).
+
+### Nội dung chính đã lập trong `R04/bao_cao_R04.md`
+
+- Tóm tắt bài báo gốc **ChatDev — ACL 2024** (`2024.acl-long.810`, pp. 15174–15186, Aug 2024; DOI `10.18653/v1/2024.acl-long.810`; `arXiv:2307.07924v5`): kiến trúc `Chat Chain` 3 pha / 5 subtask / 5 vai trò cặp đôi (`CEO`, `CTO`, `Programmer`, `Reviewer`, `Tester`), `Inception Prompting`, `Short/Long-term Memory`, cơ chế đảo vai `Communicative Dehallucination` (CDH), bộ dữ liệu `SRDD` (1.200 prompt), 4 metrics (`Completeness`, `Executability`, `Consistency`, `Quality`), kết quả Tables 1–4, phân tích lỗi review/testing và hạn chế Sec. 6.
+- Bảng đối chiếu có dẫn nguồn giữa **ChatDev (ACL 2024)**, **MetaGPT (ICLR 2024)** và **nguyên mẫu 6 vai trò** về vai trò, điều phối, sản phẩm trung gian, xử lý lỗi và đánh giá; nêu rõ giới hạn hội thoại tự nhiên (*role flipping*, lặp chỉ dẫn, tự thêm tính năng, tốn token, thiếu kiểm chứng hành vi nghiệp vụ) và nhu cầu bắt buộc kết hợp schema JSON/Pydantic + runner thật.
+- Đề xuất 5 nhóm thông tin bắt buộc trong `bug_report.json` khi `Tester` bàn giao bug cho `Dev` (định danh/commit, phân loại `root_cause_category`, bước tái hiện + `expected`/`actual`, bằng chứng runner thật, phạm vi gợi ý & cơ chế `clarification_request` có cấu trúc thay cho chat tự do) kèm luật hồi quy và trần 3 vòng sửa/task.
+- Bảng phân biệt rạch ròi nội dung **bài báo ACL 2024** với các tính năng phát triển về sau trên kho `OpenBMB/ChatDev` (nhánh `chatdev1.0` bổ sung Art/Human/Git/Docker/Incremental/Documenting; các nhánh nghiên cứu sau như ECL, IER, MacNet, Puppeteer; và **ChatDev 2.0 — DevAll** phát hành 01/2026).
+
+### Kiểm tra, phần còn mở và điều kiện nghiệm thu `R04`
+
+- **Trạng thái nghiệm thu:** `R04` **chưa** được đưa vào `Danh sách hoàn thành` và issue `#6` vẫn giữ `OPEN`. Chủ dự án cần tự rà soát `R04/bao_cao_R04.md` (đặc biệt Mục `2.2`, `3`, `4`, `5` mà 2 bình luận gốc chưa trình bày chi tiết), xác nhận phạm vi/ngày tự đọc bài báo ACL 2024 (`2024.acl-long.810`) rồi quyết định nghiệm thu.
+- **Kỷ luật nguồn đọc:** Ngày `25/11/2026` là ngày Anti đọc toàn văn PDF `2024.acl-long.810.pdf`, `arXiv:2307.07924v5` và đối chiếu README `OpenBMB/ChatDev`; không tự ghi thay ngày tự đọc chi tiết của chủ dự án.
+- **Bước kế tiếp trong cụm Tuần 2:** Đọc `R05` (SWE-agent — `#7`) và `R06` (SWE-bench — `#8`); đặc tả schema `bug_report.json` chính thức sẽ khóa tại `D07`/`D08` (Tuần 3).
+
+### Nhật ký hỗ trợ AI trong lần cập nhật `R04`
+
+- **Đầu vào:** Hai bình luận `#issuecomment-7167694255` và `#issuecomment-7167728123` trên Issue `#6`, toàn văn PDF ACL 2024 (`2024.acl-long.810.pdf`), `arXiv:2307.07924v5`, README `OpenBMB/ChatDev` (kiểm tra ngày `25/11/2026`), `R03/bao_cao_R03.md` (`0714851`) và kế hoạch Word gốc (mục `2.4–2.5`, `3.4`, `3.7`).
+- **Phạm vi hỗ trợ:** Anti tạo nhánh `R04` từ `main` (`8c2fe71`), viết và commit bản báo cáo ngắn `R04/bao_cao_R04.md` tại `01b0df2`, cập nhật sổ cái `R10/so_cai_hoan_thanh.md` trên nhánh `R10` và đăng bình luận đối chiếu tiêu chí `R04` tại issue `#12`.
+- **Kiểm chứng:** Đối chiếu đủ việc cần làm & tiêu chí hoàn thành Issue `#6`, kiểm tra khớp SHA256 tài liệu chuẩn và đồng bộ tệp cục bộ với nhánh `R04`/`R10`; không tự đóng Issue `#6` và không tự đánh dấu hoàn thành `R04` hay `R10`.
+- **Giới hạn:** Không thay thế việc chủ dự án tự kiểm tra hiểu biết và không chứa dữ liệu chạy thật hay kết luận thực nghiệm.
+
 ## Lịch sử cập nhật
 
 | Ngày | Nội dung | Căn cứ |
@@ -148,3 +176,4 @@ Mỗi công việc hoàn thành được ghi kèm ngày, kết quả, căn cứ 
 | 23/11/2026 | Bổ sung mục theo dõi chờ nghiệm thu cho R01 kèm link báo cáo `R01/bao_cao_R01.md` tại commit `32b2ce7` trên nhánh `R01` (chưa ghi hoàn thành, chờ chủ dự án rà soát) | Yêu cầu của chủ dự án, bản bàn giao `#issuecomment-7104514172`, phiếu bàn giao `#issuecomment-7104515223` và commit `32b2ce7` |
 | 24/11/2026 | Bổ sung mục theo dõi chờ nghiệm thu cho R02 kèm link bản báo cáo nhỏ `R02/bao_cao_R02.md` tại commit `4df0cc2` trên nhánh `R02`, đồng thời ghi nhận hiện trạng Issue `#3` (R01) đã đóng trên GitHub nhưng vẫn chờ xác nhận nghiệm thu báo cáo | Yêu cầu của chủ dự án, bình luận `#issuecomment-7109633981` tại Issue `#4` và commit `4df0cc2` |
 | 25/11/2026 | Bổ sung mục theo dõi chờ nghiệm thu cho R03 kèm link bản báo cáo nhỏ `R03/bao_cao_R03.md` tại commit `0714851` trên nhánh `R03`, đồng thời ghi nhận hiện trạng Issue `#4` (R02) đã đóng trên GitHub ngày `25/11/2026` nhưng vẫn chờ xác nhận nghiệm thu báo cáo | Yêu cầu của chủ dự án, bình luận `#issuecomment-7167211721` và `#issuecomment-7167269005` tại Issue `#5` và commit `0714851` |
+| 25/11/2026 | Bổ sung mục theo dõi chờ nghiệm thu cho R04 kèm link bản báo cáo nhỏ `R04/bao_cao_R04.md` tại commit `01b0df2` trên nhánh `R04`, đồng thời ghi nhận hiện trạng Issue `#5` (R03) đã đóng trên GitHub ngày `25/11/2026` nhưng vẫn chờ xác nhận nghiệm thu báo cáo | Yêu cầu của chủ dự án, bình luận `#issuecomment-7167694255` và `#issuecomment-7167728123` tại Issue `#6` và commit `01b0df2` |
