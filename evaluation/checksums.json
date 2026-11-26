@@ -1,0 +1,15 @@
+{
+  "bundle_sha256": "0dba7da0bd2a8a53d0702aca27fadc1b83fe210ba911b2bbc3f23985faa847c6",
+  "files": {
+    "A1.json": "a427a47199d5660672e6b0b320cd28cbe318e5375ddebc2b301883fb44a50f0e",
+    "A2.json": "de40c8f7d3ba338e9d2ea84813301374446242027546e833082996c2ebcc8fc8",
+    "A3.json": "77c42df59229cce42aecb942153760c77c9e32b5cc57ac98a214961fe1587fdc",
+    "adapters.py": "934c3ab33e4e927308a16a2d2409c033f98802f614052451c5eee861c65144a4",
+    "checksums.py": "50bf641157b94d85d99d1b02f0d2077ecd42c27b9739f000913aacce9305b6c5",
+    "reporting.py": "1c5887244db294779d30dd32511efa977844e6e27ced7d51bf1ba46e6593c0ca",
+    "suites.py": "e24788b8096bd21892217f4ededa23f30cffbf73984f7b90944058d28673371d",
+    "ui_driver.py": "a7a3e9a7af3a8f2a453967c1fd207164b80c4043976d815c3c6f66b0566b2eac"
+  },
+  "normalization": "lf_utf8",
+  "schema_version": "1"
+}
