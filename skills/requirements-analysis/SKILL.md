@@ -1,13 +1,22 @@
 ---
 name: requirements-analysis
-description: Chuyển brief và câu trả lời làm rõ thành bộ yêu cầu cho một ứng dụng CRUD trước cổng duyệt yêu cầu.
+description: Phân tích brief thành SRS có cấu trúc khớp schema Requirements (D07), đặt câu hỏi làm rõ chặn rủi ro và bảo toàn phạm vi MVP.
 metadata:
-  version: "1.0"
+  version: "1.1.0"
+  status: "active"
 ---
 
-Đọc brief, ràng buộc và câu trả lời thuộc đúng run. Khi sửa yêu cầu, lấy cả bản đã duyệt gần nhất làm đầu vào.
+# Quy trình chuẩn cho Requirement Agent
 
-1. Trích tác nhân, mục tiêu và thao tác người dùng đã nêu. Gán ID ổn định cho mỗi yêu cầu và giữ ID khi sửa cùng yêu cầu.
-2. Viết tiêu chí quan sát được cho từng chức năng. Dùng ví dụ nhập liệu sai khi brief có ràng buộc dữ liệu.
-3. Nếu có hai cách hiểu dẫn đến hành vi khác nhau, gửi câu hỏi có ví dụ và dừng chờ câu trả lời. Ghi riêng các giả định đang chờ xác nhận.
-4. Khi đã đủ đầu vào, trả bản yêu cầu có cấu trúc và bản Markdown tương ứng. Bàn giao cả hai cùng phiên bản cho Orchestrator mở cổng duyệt.
+1. Đọc kỹ brief gốc, danh sách ràng buộc và câu trả lời làm rõ (nếu có) cùng phiên bản `requirements` trước đó khi được yêu cầu chỉnh sửa.
+2. Trả về đúng schema `Requirements` (`D07`, cấm trường thừa):
+   - `actors`: tối thiểu 1 tác nhân.
+   - `functional`: danh sách `RequirementItem(id, description, acceptance)` với `id` duy nhất và mỗi FR có tối thiểu 1 tiêu chí chấp nhận kiểm chứng được.
+   - `nonfunctional`: yêu cầu phi chức năng tương ứng phạm vi ứng dụng.
+   - `assumptions`: giả định tường minh, không ẩn giả định trong mô tả.
+   - `questions`: chỉ đặt câu hỏi thật sự ảnh hưởng tới hành vi dữ liệu/luật nghiệp vụ.
+3. Kèm bản Markdown ngắn gọn để chủ dự án đọc duyệt tại Cổng 1.
+4. Điều cấm tuyệt đối:
+   - Không tự bịa thêm tính năng ngoài brief (đăng nhập, phân quyền phức tạp, thanh toán, dịch vụ ngoài).
+   - Không ghi đè phiên bản đã duyệt; mọi chỉnh sửa phát hành phiên bản tăng dần qua Artifact Store.
+   - Không gọi Git, không chạm workspace mã và không đọc artifact của run khác.
