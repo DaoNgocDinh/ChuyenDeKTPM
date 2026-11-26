@@ -181,6 +181,21 @@ class RunReader:
         )
         return [dict(row) for row in rows]
 
+    def artifact(self, artifact_id, version):
+        row = self._db.execute(
+            "SELECT * FROM artifacts WHERE run_id=? AND id=? AND version=?",
+            (self.run_id, artifact_id, version),
+        ).fetchone()
+        if row is None:
+            raise KeyError("Unknown artifact version for run")
+        return dict(row)
+
+    def latest_version(self, kind):
+        return self._db.execute(
+            "SELECT COALESCE(MAX(version),0) FROM artifacts WHERE run_id=? AND type=?",
+            (self.run_id, kind),
+        ).fetchone()[0]
+
 
 class WorkerRepository(RunReader):
     """Only created by worker_run after checking host ownership inside the transaction."""
