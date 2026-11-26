@@ -195,6 +195,8 @@ class RunQuotaTracker:
         with database.transaction(write=True) as repo:
             run = repo.get_run(project_id, run_id)
             writer = repo.worker_run(project_id, run_id, lease)
+            previous = json.loads(run["budget_json"])
+            snap["submitted_budget"] = previous.get("submitted_budget", previous)
             if transition_on_exceeded and self.stop_reason is not None:
                 next_state = run_transition(RunState(run["status"]), "quota_exceeded")
                 repo._db.execute(
