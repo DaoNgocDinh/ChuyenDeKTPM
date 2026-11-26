@@ -37,7 +37,7 @@ class SkillTest(unittest.TestCase):
             git("-c", "user.name=test", "-c", "user.email=test@example.org", "commit", "-qm", "sample")
             stamp = skill_manifest(folder, enabled=False)
             self.assertEqual(git("rev-parse", "HEAD"), stamp["commit"])
-            self.assertEqual("1.0", stamp["version"])
+            self.assertEqual("1.1.0", stamp["version"])
             self.assertFalse(stamp["enabled"])
             (folder / "example.md").write_text("pending", encoding="utf-8")
             with self.assertRaises(ValueError):
@@ -47,6 +47,6 @@ class SkillTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             folder = shutil.copytree(SAMPLE, Path(tmp) / SAMPLE.name)
             source = folder / "SKILL.md"
-            source.write_text(source.read_text(encoding="utf-8").replace('"1.0"', '""'), encoding="utf-8")
+            source.write_text(source.read_text(encoding="utf-8").replace('"1.1.0"', '""'), encoding="utf-8")
             with self.assertRaises(ValueError):
                 load_skill(folder)
