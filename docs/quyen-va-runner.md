@@ -1,5 +1,7 @@
 # D11 · Quyền công cụ và cô lập runner
 
+**Đã duyệt D11.** Chủ dự án xác nhận toàn bộ thiết kế D11 tại phiên bản nội dung `234ba3f` trong trao đổi của dự án, gồm ma trận quyền, Docker, quyền truy cập Internet và các giới hạn khởi đầu. V02 dùng ma trận này để lập ca kiểm chứng. E04 cần ghi digest image và tài nguyên thực tế khi đóng băng protocol.
+
 Bản đề xuất cho I13–I15. P01 và D05 xác định các vùng ghi của sáu vai trò. Chủ dự án chọn Docker, cho phép tải công cụ cần thiết và cho phép kết nối Internet chiều ra trong lúc test. Container dùng mạng bridge riêng của Docker. Chính sách cấm chia sẻ namespace mạng của host, truyền credential hoặc mount Docker socket. Giới hạn khởi đầu đã duyệt cho mỗi lượt là 2 CPU, 2 GiB RAM, 128 PID, 180 giây và tối đa 1 MiB log. [Hợp đồng vai trò](hop-dong-vai-tro.md) · [Ma trận quyền có thể kiểm tra](quyen-cong-cu.json)
 
 ### Ranh giới thực thi

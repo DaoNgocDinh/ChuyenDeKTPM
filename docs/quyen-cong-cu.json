@@ -1,5 +1,5 @@
 {
-  "status": "proposed",
+  "status": "owner_approved",
   "trusted_context": [
     "project_id",
     "run_id",
