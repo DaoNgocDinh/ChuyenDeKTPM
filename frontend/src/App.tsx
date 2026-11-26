@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { PlatformApiClient } from "./api/client.ts";
 import { parseRunIdFromHash } from "./api/polling.ts";
+import type { NextAction } from "./api/types.ts";
+import { ApprovalView } from "./components/ApprovalView.tsx";
+import { CodeTestTraceView } from "./components/CodeTestTraceView.tsx";
 import { ProjectsView } from "./components/ProjectsView.tsx";
 import { RunDetailView } from "./components/RunDetailView.tsx";
 
-type Screen = "projects" | "run";
+type Screen = "projects" | "run" | "approvals" | "inspect";
 
 export function App() {
   const client = useMemo(() => new PlatformApiClient(), []);
@@ -37,7 +40,7 @@ export function App() {
       const fromHash = parseRunIdFromHash(window.location.hash);
       if (fromHash) {
         setActiveRunId(fromHash);
-        setScreen("run");
+        setScreen((prev) => (prev === "projects" ? "run" : prev));
       }
     };
     window.addEventListener("hashchange", onHashChange);
@@ -50,6 +53,14 @@ export function App() {
     window.location.hash = `#/runs/${encodeURIComponent(runId)}`;
   }
 
+  function handleNavigateAction(action: NextAction) {
+    if (action === "review") {
+      setScreen("approvals");
+    } else if (action === "inspect" || action === "accept_output") {
+      setScreen("inspect");
+    }
+  }
+
   return (
     <div className="shell">
       <header className="topbar">
@@ -59,7 +70,7 @@ export function App() {
             {healthText}
           </p>
         </div>
-        <nav className="tabs" aria-label="Điều hướng màn hình">
+        <nav className="tabs" aria-label="Điều hướng bốn màn hình MVP">
           <button
             type="button"
             className={screen === "projects" ? "tab active" : "tab"}
@@ -75,6 +86,22 @@ export function App() {
           >
             2. Theo dõi Run
           </button>
+          <button
+            type="button"
+            className={screen === "approvals" ? "tab active" : "tab"}
+            disabled={!activeRunId}
+            onClick={() => setScreen("approvals")}
+          >
+            3. Duyệt Artifact
+          </button>
+          <button
+            type="button"
+            className={screen === "inspect" ? "tab active" : "tab"}
+            disabled={!activeRunId}
+            onClick={() => setScreen("inspect")}
+          >
+            4. Mã, Test &amp; Truy vết
+          </button>
         </nav>
       </header>
 
@@ -86,8 +113,16 @@ export function App() {
             onSelectProject={setSelectedProjectId}
             onOpenRun={openRun}
           />
+        ) : screen === "run" ? (
+          <RunDetailView
+            client={client}
+            runId={activeRunId}
+            onNavigateAction={handleNavigateAction}
+          />
+        ) : screen === "approvals" ? (
+          <ApprovalView client={client} runId={activeRunId} />
         ) : (
-          <RunDetailView client={client} runId={activeRunId} />
+          <CodeTestTraceView client={client} runId={activeRunId} />
         )}
       </main>
     </div>
