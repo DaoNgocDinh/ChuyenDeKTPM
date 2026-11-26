@@ -28,7 +28,7 @@ class RunnerProfile:
     def __post_init__(self):
         if not re.fullmatch(r"[a-z][a-z0-9_-]*", self.suite_id):
             raise ValueError("invalid suite ID")
-        if not re.fullmatch(r"[a-z0-9][a-z0-9.:/_-]*@sha256:[0-9a-f]{64}", self.image_digest):
+        if not re.fullmatch(r"(?:[a-z0-9][a-z0-9.:/_-]*@)?sha256:[0-9a-f]{64}", self.image_digest):
             raise ValueError("the image must be pinned by SHA256 digest")
         executable = PurePosixPath(self.executable)
         if not executable.is_absolute() or ".." in executable.parts or "\x00" in self.executable:
