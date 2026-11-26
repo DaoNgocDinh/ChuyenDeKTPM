@@ -1,0 +1,110 @@
+{
+  "case_id": "A2",
+  "issue": "D03",
+  "version": "0.1",
+  "review_status": "Chờ chủ dự án duyệt 10 tiêu chí và fixture.",
+  "source": "Kế hoạch Word mục 5.1, P01 và issue D03.",
+  "usage": "Cấu hình S và M nhận cùng brief, cùng câu trả lời khi hỏi. Giữ fixtures và criteria ở bộ chấm độc lập. Mỗi tiêu chí bắt đầu trên một kho dữ liệu sạch rồi nạp riêng những bản ghi được nêu trong thao tác.",
+  "brief": "Xây ứng dụng ghi chú. Người dùng tạo, xem, sửa, xóa ghi chú và nhãn, gắn nhiều nhãn cho một ghi chú, dùng chung nhãn giữa các ghi chú, tìm kiếm văn bản và lọc theo nhãn trên web.",
+  "clarification_script": [
+    {
+      "question": "Tìm kiếm dùng quy tắc nào?",
+      "answer": "Chủ dự án đã chốt tìm chuỗi con, không phân biệt chữ hoa/thường. Dữ liệu thử đặt từ khóa ở cả tiêu đề và nội dung để bộ test không áp đặt lựa chọn trường tìm kiếm."
+    },
+    {
+      "question": "Work và work có tạo hai nhãn không?",
+      "answer": "Chủ dự án đã chốt Work và work là cùng một nhãn. Có thể trả lại nhãn hiện hữu hoặc từ chối tạo bản sao."
+    },
+    {
+      "question": "Khi xóa mục có liên kết thì sao?",
+      "answer": "Không để liên kết mồ côi. Ghi chú hoặc nhãn còn được dùng ở nơi khác phải tiếp tục đọc được."
+    }
+  ],
+  "fixtures": {
+    "N1": {
+      "title": "Alpha kế hoạch",
+      "body": "Lịch Alpha",
+      "tags": [
+        "Work",
+        "Urgent"
+      ]
+    },
+    "N2": {
+      "title": "Beta họp",
+      "body": "Biên bản Beta",
+      "tags": [
+        "Work"
+      ]
+    },
+    "N3": {
+      "title": "Gamma riêng",
+      "body": "Checklist Gamma",
+      "tags": [
+        "Home"
+      ]
+    }
+  },
+  "criteria": [
+    {
+      "id": "A2-01",
+      "title": "Tạo và đọc ghi chú",
+      "action": "Tạo ghi chú N1 từ tiêu đề/nội dung fixture và đọc lại trước khi gắn nhãn.",
+      "expected": "Lưu được N1, đọc đúng tiêu đề Alpha kế hoạch và nội dung Lịch Alpha."
+    },
+    {
+      "id": "A2-02",
+      "title": "Sửa ghi chú",
+      "action": "Nạp bộ fixture. Đổi tiêu đề N2 thành Beta đã duyệt và đọc lại.",
+      "expected": "N2 có tiêu đề mới, giữ nguyên nội dung và nhãn Work."
+    },
+    {
+      "id": "A2-03",
+      "title": "Tạo, xem và sửa nhãn",
+      "action": "Tạo nhãn Nháp, đọc lại, đổi tên thành Công bố.",
+      "expected": "Đọc được đúng nhãn vừa tạo. Sau khi sửa, danh sách có Công bố thay cho Nháp."
+    },
+    {
+      "id": "A2-04",
+      "title": "Chống trùng nhãn",
+      "action": "Tạo Work rồi thử tạo work.",
+      "expected": "Danh sách chỉ có một nhãn tương đương Work, không phụ thuộc cách viết hoa được hiển thị."
+    },
+    {
+      "id": "A2-05",
+      "title": "Nhiều nhãn, dùng chung nhãn",
+      "action": "Tạo dữ liệu như fixture và đọc lại danh sách liên kết.",
+      "expected": "N1 liên kết Work và Urgent, N2 liên kết cùng nhãn Work, N3 liên kết Home."
+    },
+    {
+      "id": "A2-06",
+      "title": "Tìm kiếm chuỗi con",
+      "action": "Nạp ba ghi chú. Tìm lPh xuất hiện ở giữa từ Alpha.",
+      "expected": "Chỉ trả N1. Cách viết hoa/thường không ảnh hưởng kết quả."
+    },
+    {
+      "id": "A2-07",
+      "title": "Lọc theo nhãn",
+      "action": "Nạp bộ fixture. Lần lượt lọc Work rồi Home.",
+      "expected": "Work trả đúng N1 và N2. Home trả đúng N3."
+    },
+    {
+      "id": "A2-08",
+      "title": "Xóa ghi chú",
+      "action": "Nạp bộ fixture. Xóa N1 rồi xem ghi chú và liên kết theo Work.",
+      "expected": "N1 và các liên kết đến N1 biến mất. N2 vẫn liên kết Work và có thể đọc được."
+    },
+    {
+      "id": "A2-09",
+      "title": "Xóa nhãn",
+      "action": "Nạp bộ fixture. Xóa Work rồi đọc lại ghi chú và liên kết.",
+      "expected": "Mọi liên kết Work biến mất. N1 và N2 vẫn tồn tại; N1 giữ Urgent và N3 giữ Home."
+    },
+    {
+      "id": "A2-10",
+      "title": "Thao tác từ giao diện",
+      "action": "Nạp bộ fixture. Mở web, tìm eTa và mở kết quả.",
+      "expected": "Trang kết quả chỉ hiện N2. Người dùng đọc được Beta họp và Biên bản Beta trên giao diện."
+    }
+  ],
+  "check": "Chạy node -p \"require('./evaluation/A2.json').criteria.map(c => c.id).join(' ')\" từ gốc repo. Kết quả phải liệt kê đúng A2-01 đến A2-10. Đối chiếu từng kết quả với fixture, rồi ghi quyết định vào issue D03. E01 sẽ chạy bộ kiểm thử độc lập trên ứng dụng sinh ra."
+}
