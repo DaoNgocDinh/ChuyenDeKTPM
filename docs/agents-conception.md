@@ -17,3 +17,11 @@ Một lượt kiểm tra bằng brief tạo và xem việc đã sinh 3 FR, 3 câ
 Bản thiết kế sinh đồng thời artifact `architecture` (JSON) và tài liệu Markdown `document` (`ADR`, thực thể/quan hệ, sơ đồ Mermaid `FR → component`, OpenAPI, bố cục UI và chiến lược kiểm thử). Nếu yêu cầu mâu thuẫn với stack khóa, model báo qua trường `blocker` để host dừng an toàn ở `needs_human_review` kèm đầy đủ usage.
 
 **Test** · Chạy `uv run --frozen python -m unittest -v tests.test_design_agents tests.test_orchestrator` và `uvx ruff check --select E4,E7,E9,F backend tests`. Đặt `SDLC_LIVE_MODEL=1` để chạy thêm ca live Neon High.
+
+### I11 · Planning
+
+`DesignAgents.dispatch(order)` với vai trò `Planning` nhận đúng cặp `(requirements_ref, architecture_ref)`, xác nhận `requirements` đã duyệt cổng 1 và khớp `architecture.requirements`, rồi tiêm skill `Planning` để sinh `Plan` (`D07`) kèm `bound` khóa chặt hai `ArtifactRef` nguồn.
+
+Bộ kiểm tra [planning.py](../backend/planning.py) (`validate_plan`, `task_order`, `render_plan`) chặn chu trình DAG, dependency không tồn tại, FR thiếu task, task không gắn FR chức năng và đường dẫn tệp ngoài `app/`. Host giữ `architecture` + `plan` tại cổng duyệt 2 nguyên tử (`architecture_plan`) trước khi mở `Dev`, bảo đảm `Planning` không sửa yêu cầu hay đóng task thay `Dev`.
+
+**Test** · Chạy `uv run --frozen python -m unittest -v tests.test_planning tests.test_design_agents tests.test_orchestrator` và `uvx ruff check --select E4,E7,E9,F backend tests`. Đặt `SDLC_LIVE_MODEL=1` để chạy thêm ca live Neon High.

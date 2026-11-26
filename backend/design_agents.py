@@ -6,8 +6,9 @@ from pydantic import ValidationError
 
 from .approvals import ApprovalService
 from .architecture_view import render_architecture, validate_architecture
-from .contracts import Architecture, Requirements
+from .contracts import Architecture, Plan, Requirements
 from .llm import ModelError, invoke
+from .planning import render_plan, validate_plan
 
 
 def render_requirements(requirements: Requirements) -> str:
@@ -118,6 +119,8 @@ class DesignAgents:
 
         if order.role == "Architecture":
             return self._architecture(order)
+        if order.role == "Planning":
+            return self._planning(order)
         if order.role != "Requirement":
             raise ValueError(f"Unsupported design role: {order.role}")
         config = order.context.get("config", {})
@@ -170,3 +173,38 @@ class DesignAgents:
             bound={"requirements": ref}, allow_blocker=True,
         )
         return RoleOutput(payload=architecture, usage=usage, markdown=render_architecture(architecture))
+
+    def _planning(self, order):
+        from .orchestrator import RoleOutput
+
+        if len(order.inputs) != 2:
+            raise ValueError("Planning needs approved requirements and architecture artifacts")
+        req_ref, arch_ref = order.inputs
+        requirements = self._approved_requirements(order, req_ref)
+        architecture = self._read_input(order, arch_ref, "architecture", Architecture)
+        if architecture.requirements != req_ref:
+            raise ValueError("Architecture does not match approved requirements version")
+        facts = {
+            "requirements": requirements.model_dump(),
+            "architecture": architecture.model_dump(),
+            "stack": ["FastAPI", "React", "SQLite"],
+            "revision_feedback": order.context.get("feedback", []),
+        }
+        if order.context.get("routing_bug"):
+            facts["routing_bug"] = order.context["routing_bug"]
+        execution_order = []
+
+        def check(plan):
+            execution_order.clear()
+            execution_order.extend(validate_plan(plan, requirements, architecture, req_ref, arch_ref))
+
+        plan, usage = self._generate(
+            order.role,
+            "Phân rã kiến trúc thành các task nhỏ có thứ tự phụ thuộc hợp lệ (DAG không chu trình). "
+            "Mỗi task phải có task_id duy nhất, ít nhất một FR chức năng trong requirement_ids, "
+            "dependencies chỉ trỏ tới task_id khác đã khai báo, danh sách files dự kiến chỉ nằm dưới app/, "
+            "done_conditions cụ thể để nghiệm thu và danh sách tests cần chạy. Hợp tất cả task phải phủ "
+            "100% FR trong requirements.functional. Tham chiếu phiên bản do host gắn.",
+            facts, Plan, check, bound={"requirements": req_ref, "architecture": arch_ref},
+        )
+        return RoleOutput(payload=plan, usage=usage, markdown=render_plan(plan, execution_order))
