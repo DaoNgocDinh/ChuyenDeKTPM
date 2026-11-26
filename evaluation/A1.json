@@ -1,0 +1,103 @@
+{
+  "case_id": "A1",
+  "issue": "D02",
+  "version": "0.1",
+  "review_status": "Chờ chủ dự án duyệt 10 tiêu chí và fixture.",
+  "source": "Kế hoạch Word mục 5.1, P01 và issue D02.",
+  "usage": "Cấu hình S và M nhận cùng brief, cùng câu trả lời khi hỏi. Giữ fixtures và criteria ở bộ chấm độc lập. Mỗi tiêu chí bắt đầu trên một kho dữ liệu sạch rồi nạp riêng những bản ghi được nêu trong thao tác.",
+  "brief": "Xây ứng dụng quản lý công việc. Mỗi Task có tiêu đề, trạng thái và hạn. Người dùng tạo, xem, sửa, xóa công việc và lọc danh sách theo trạng thái qua giao diện web. Lưu dữ liệu để mở lại sau khi khởi động lại ứng dụng.",
+  "clarification_script": [
+    {
+      "question": "Task dùng các trạng thái nào?",
+      "answer": "Dùng todo, doing và done. Chủ dự án đã chốt ba giá trị này."
+    },
+    {
+      "question": "Có cho tiêu đề rỗng khi tạo công việc không?",
+      "answer": "Từ chối tiêu đề rỗng."
+    },
+    {
+      "question": "Hai cấu hình có dùng dữ liệu khác nhau không?",
+      "answer": "Cả S và M dùng cùng brief, quy tắc trả lời và dữ liệu chấm."
+    }
+  ],
+  "fixtures": {
+    "T1": {
+      "title": "Viết đặc tả",
+      "status": "todo",
+      "due": "2026-12-05"
+    },
+    "T2": {
+      "title": "Duyệt API",
+      "status": "doing",
+      "due": "2026-12-08"
+    },
+    "T3": {
+      "title": "Bàn giao",
+      "status": "done",
+      "due": "2026-12-10"
+    }
+  },
+  "criteria": [
+    {
+      "id": "A1-01",
+      "title": "Tạo Task",
+      "action": "Bắt đầu với danh sách trống. Tạo T1.",
+      "expected": "Tạo thành công, tìm lại được đúng một T1 với tiêu đề, trạng thái và hạn đã nhập."
+    },
+    {
+      "id": "A1-02",
+      "title": "Đọc danh sách",
+      "action": "Nạp T1, T2, T3 rồi đọc danh sách chưa lọc.",
+      "expected": "Danh sách gồm đúng ba Task, mỗi tiêu đề đi cùng trạng thái và hạn tương ứng. Thứ tự hiển thị tùy ứng dụng."
+    },
+    {
+      "id": "A1-03",
+      "title": "Sửa thông tin",
+      "action": "Nạp T1. Sửa tiêu đề thành Viết đặc tả v2 và hạn thành 2026-12-12 rồi mở lại.",
+      "expected": "T1 mang tiêu đề và hạn mới, vẫn là cùng một Task, không tạo bản sao."
+    },
+    {
+      "id": "A1-04",
+      "title": "Xóa công việc",
+      "action": "Nạp T1 và T2. Xóa T1 và đọc lại danh sách.",
+      "expected": "T1 vắng mặt, T2 còn đủ ba trường như fixture."
+    },
+    {
+      "id": "A1-05",
+      "title": "Tiêu đề rỗng",
+      "action": "Tạo một Task có tiêu đề chuỗi rỗng, trạng thái todo, hạn 2026-12-05.",
+      "expected": "Ứng dụng từ chối lưu. Tập Task giữ nguyên."
+    },
+    {
+      "id": "A1-06",
+      "title": "Ba trạng thái hợp lệ",
+      "action": "Nạp T1 rồi lần lượt đổi trạng thái thành doing, done, todo và đọc lại sau mỗi lần.",
+      "expected": "Cả ba lần đều lưu đúng giá trị và giữ nguyên tiêu đề, hạn."
+    },
+    {
+      "id": "A1-07",
+      "title": "Trạng thái ngoài danh mục",
+      "action": "Nạp T1. Gửi thao tác cập nhật trạng thái thành archived qua đầu vào của ứng dụng.",
+      "expected": "Ứng dụng từ chối thay đổi. T1 vẫn ở todo."
+    },
+    {
+      "id": "A1-08",
+      "title": "Lọc theo trạng thái",
+      "action": "Nạp T1, T2, T3. Lần lượt lọc todo, doing, done.",
+      "expected": "Mỗi lần chỉ thấy Task tương ứng là T1, T2, T3."
+    },
+    {
+      "id": "A1-09",
+      "title": "Dữ liệu sau restart",
+      "action": "Nạp T1, đổi thành done. Tắt rồi mở lại tiến trình ứng dụng trên cùng kho dữ liệu.",
+      "expected": "Đọc được T1 ở done với đúng tiêu đề và hạn."
+    },
+    {
+      "id": "A1-10",
+      "title": "Thao tác từ giao diện",
+      "action": "Mở trang web, tạo T2 qua biểu mẫu rồi chọn bộ lọc doing.",
+      "expected": "Thấy Duyệt API, trạng thái doing và hạn tương ứng trên giao diện."
+    }
+  ],
+  "check": "Chạy node -p \"require('./evaluation/A1.json').criteria.map(c => c.id).join(' ')\" từ gốc repo. Kết quả phải liệt kê đúng A1-01 đến A1-10. Đối chiếu từng kết quả với fixture, rồi ghi quyết định vào issue D02. E01 sẽ chạy bộ kiểm thử độc lập trên ứng dụng sinh ra."
+}
