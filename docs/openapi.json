@@ -1,0 +1,1478 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Chuyên đề KTPM – API cục bộ",
+    "version": "0.1.0-draft",
+    "description": "Đề xuất D10 để chủ dự án duyệt. Lỗi tool_denied và budget_exceeded từ worker xuất hiện trong last_error và timeline của đúng run."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}",
+      "variables": {
+        "port": {
+          "default": "8000"
+        }
+      },
+      "description": "Chỉ loopback. Port có thể cấu hình."
+    }
+  ],
+  "paths": {
+    "/projects": {
+      "get": {
+        "operationId": "listProjects",
+        "summary": "Danh sách dự án của người dùng cục bộ",
+        "responses": {
+          "200": {
+            "description": "Danh sách dự án.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Project"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createProject",
+        "summary": "Tạo dự án từ tên, brief và ràng buộc",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProject"
+              },
+              "example": {
+                "name": "A1",
+                "brief": "Quản lý công việc và hạn chót.",
+                "constraints": [
+                  "SQLite"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Dự án đã tạo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/runs": {
+      "get": {
+        "operationId": "listRuns",
+        "summary": "Lịch sử run theo dự án",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Các run trong dự án.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunTicket"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createRun",
+        "summary": "Xếp hàng một job theo khóa idempotency trong dự án",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRun"
+              },
+              "example": {
+                "idempotency_key": "a1-lan-1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Cùng khóa và payload trả về cùng run_id, kể cả khi client gửi lại.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunTicket"
+                },
+                "example": {
+                  "project_id": "p1",
+                  "run_id": "r1",
+                  "status": "queued"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}": {
+      "get": {
+        "operationId": "getRun",
+        "summary": "Trạng thái, quota, lỗi và các hành động đang khả dụng",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dữ liệu của run thuộc dự án cục bộ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/events": {
+      "get": {
+        "operationId": "getEvents",
+        "summary": "Polling sự kiện theo cursor tăng trong run",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Chỉ trả sequence > after, thứ tự tăng. Trang rỗng giữ nguyên cursor đã gửi."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dữ liệu của run thuộc dự án cục bộ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Events"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/artifacts": {
+      "get": {
+        "operationId": "listArtifacts",
+        "summary": "Các loại và phiên bản artifact, gồm diff, bug và trace",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Lọc loại artifact."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dữ liệu của run thuộc dự án cục bộ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ArtifactItem"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        }
+      }
+    },
+    "/artifacts/{artifact_id}": {
+      "get": {
+        "operationId": "getArtifact",
+        "summary": "Đọc nội dung artifact thuộc run và dự án hiện tại",
+        "parameters": [
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Host ràng buộc cả run, artifact và chủ dự án trước khi đọc."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Nội dung đúng phiên bản cùng liên kết phiên bản trước.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Artifact"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/approvals": {
+      "post": {
+        "operationId": "reviewGate",
+        "summary": "Chấp nhận hoặc yêu cầu sửa đúng artifact, phiên bản và hash",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Approval"
+              },
+              "example": {
+                "gate": "requirements",
+                "artifacts": [
+                  {
+                    "artifact_id": "req-v1",
+                    "version": 1,
+                    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  }
+                ],
+                "decision": "request_changes",
+                "comment": "Bổ sung quy tắc tiêu đề rỗng."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã ghi quyết định nguyên tử cho toàn bộ cổng.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionReceipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancelRun",
+        "summary": "Dừng có kiểm soát",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Đã nhận thao tác. UI tiếp tục đọc trạng thái.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunTicket"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/resume": {
+      "post": {
+        "operationId": "resumeRun",
+        "summary": "Khôi phục khi đã đối chiếu checkpoint",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Đã nhận thao tác. UI tiếp tục đọc trạng thái.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunTicket"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/tasks": {
+      "get": {
+        "operationId": "getTasks",
+        "summary": "Task, phụ thuộc và liên kết đến patch",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dữ liệu của run thuộc dự án cục bộ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Task"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/test-reports": {
+      "get": {
+        "operationId": "getTestReports",
+        "summary": "Báo cáo runner, bug và trace theo commit",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dữ liệu của run thuộc dự án cục bộ.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TestReport"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/export": {
+      "get": {
+        "operationId": "exportRun",
+        "summary": "Tải gói mã và bằng chứng đã được kiểm soát",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Gói ZIP đã lọc credential, gồm README, mã, artifact được duyệt và runner report.",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/clarifications": {
+      "post": {
+        "operationId": "answerQuestions",
+        "summary": "Trả lời câu hỏi cho đúng artifact đang chờ làm rõ",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Clarification"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quyết định được ghi cho đúng phiên bản và run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionReceipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/acceptance": {
+      "post": {
+        "operationId": "reviewOutput",
+        "summary": "Ghi nghiệm thu cuối của chủ dự án cho manifest đã xem",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalAcceptance"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quyết định được ghi cho đúng phiên bản và run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionReceipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidInput"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "not_found",
+              "approval_version_conflict",
+              "invalid_transition",
+              "tool_denied",
+              "budget_exceeded",
+              "invalid_request",
+              "idempotency_conflict"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateProject": {
+        "type": "object",
+        "required": [
+          "name",
+          "brief"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "brief": {
+            "type": "string",
+            "minLength": 1
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "Project": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "name",
+          "brief",
+          "constraints"
+        ],
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "brief": {
+            "type": "string"
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateRun": {
+        "type": "object",
+        "required": [
+          "idempotency_key"
+        ],
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "configuration_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "RunTicket": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "run_id",
+          "status"
+        ],
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "waiting_approval",
+              "pending_recovery",
+              "needs_human_review",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Run": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "run_id",
+          "status",
+          "stage",
+          "current_step_id",
+          "quota",
+          "next_actions",
+          "last_error"
+        ],
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "waiting_approval",
+              "pending_recovery",
+              "needs_human_review",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "stage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "current_step_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quota": {
+            "type": "object",
+            "required": [
+              "input_tokens",
+              "output_tokens",
+              "usage_complete",
+              "tool_calls"
+            ],
+            "properties": {
+              "input_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "output_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "usage_complete": {
+                "type": "boolean"
+              },
+              "tool_calls": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "next_actions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "review",
+                "cancel",
+                "resume",
+                "inspect",
+                "clarify",
+                "accept_output"
+              ]
+            }
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Error"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gate_artifact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "question_artifact_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Event": {
+        "type": "object",
+        "required": [
+          "sequence",
+          "kind",
+          "role",
+          "message",
+          "step_id",
+          "created_at"
+        ],
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "step_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Events": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            }
+          },
+          "next_cursor": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ArtifactRef": {
+        "type": "object",
+        "required": [
+          "artifact_id",
+          "version",
+          "sha256"
+        ],
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ArtifactItem": {
+        "type": "object",
+        "required": [
+          "run_id",
+          "artifact_id",
+          "kind",
+          "version",
+          "sha256",
+          "previous_artifact_id"
+        ],
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "artifact_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "previous_artifact_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Artifact": {
+        "type": "object",
+        "required": [
+          "run_id",
+          "artifact_id",
+          "kind",
+          "version",
+          "sha256",
+          "previous_artifact_id",
+          "media_type",
+          "content"
+        ],
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "artifact_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "previous_artifact_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "media_type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Approval": {
+        "type": "object",
+        "required": [
+          "gate",
+          "artifacts",
+          "decision",
+          "comment"
+        ],
+        "properties": {
+          "gate": {
+            "type": "string",
+            "enum": [
+              "requirements",
+              "architecture_plan"
+            ]
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactRef"
+            },
+            "minItems": 1,
+            "maxItems": 2,
+            "uniqueItems": true
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "request_changes"
+            ]
+          },
+          "comment": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "gate": {
+                  "const": "requirements"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "artifacts": {
+                  "maxItems": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "artifacts": {
+                  "minItems": 2
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "decision": {
+                  "const": "request_changes"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "comment": {
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        ]
+      },
+      "DecisionReceipt": {
+        "type": "object",
+        "required": [
+          "run_id",
+          "decision_id",
+          "status"
+        ],
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "decision_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "waiting_approval",
+              "pending_recovery",
+              "needs_human_review",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Task": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "title",
+          "status",
+          "requirement_ids",
+          "dependency_ids",
+          "patch_artifact_ids"
+        ],
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "todo",
+              "ready",
+              "in_progress",
+              "waiting_test",
+              "rework",
+              "done",
+              "blocked"
+            ]
+          },
+          "requirement_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "dependency_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "patch_artifact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "TestReport": {
+        "type": "object",
+        "required": [
+          "report_id",
+          "task_id",
+          "suite_id",
+          "commit",
+          "exit_code",
+          "passed",
+          "failed",
+          "skipped",
+          "errors",
+          "log_artifact_id",
+          "bug_artifact_ids",
+          "trace_artifact_ids"
+        ],
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "task_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suite_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "commit": {
+            "type": "string",
+            "minLength": 1
+          },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "passed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "errors": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "log_artifact_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bug_artifact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "trace_artifact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "Clarification": {
+        "type": "object",
+        "required": [
+          "artifact",
+          "answers"
+        ],
+        "properties": {
+          "artifact": {
+            "$ref": "#/components/schemas/ArtifactRef"
+          },
+          "answers": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "question_id",
+                "answer"
+              ],
+              "properties": {
+                "question_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "answer": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "FinalAcceptance": {
+        "type": "object",
+        "required": [
+          "manifest",
+          "decision",
+          "comment"
+        ],
+        "properties": {
+          "manifest": {
+            "$ref": "#/components/schemas/ArtifactRef"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accept",
+              "request_changes"
+            ]
+          },
+          "comment": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "decision": {
+                  "const": "request_changes"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "comment": {
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "responses": {
+      "NotFound": {
+        "description": "Không tìm thấy trong phạm vi local owner, project và run.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "not_found",
+              "message": "Không tìm thấy trong phạm vi local owner, project và run."
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Xung đột giữa request và trạng thái hiện tại cùng run.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "examples": {
+              "stale": {
+                "value": {
+                  "code": "approval_version_conflict",
+                  "message": "Tải lại phiên bản mới trước khi duyệt."
+                }
+              },
+              "invalid_state": {
+                "value": {
+                  "code": "invalid_transition",
+                  "message": "Run chưa ở trạng thái cho phép hành động này."
+                }
+              },
+              "different_request": {
+                "value": {
+                  "code": "idempotency_conflict",
+                  "message": "Khóa trước đó thuộc một payload khác."
+                }
+              }
+            }
+          }
+        }
+      },
+      "InvalidInput": {
+        "description": "Dữ liệu không hợp lệ.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "invalid_request",
+              "message": "Dữ liệu không hợp lệ."
+            }
+          }
+        }
+      }
+    }
+  }
+}
