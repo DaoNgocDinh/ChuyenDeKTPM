@@ -64,11 +64,16 @@ class Database:
                 raise StorageConflict("Incomplete platform migration")
 
     @contextmanager
-    def transaction(self, *, write=False):
+    def _connection_transaction(self, *, write=False):
         with closing(self._connect()) as db, db:
             if not write:
                 db.execute("PRAGMA query_only=ON")
             db.execute("BEGIN IMMEDIATE" if write else "BEGIN")
+            yield db
+
+    @contextmanager
+    def transaction(self, *, write=False):
+        with self._connection_transaction(write=write) as db:
             yield Repository(db)
 
 
