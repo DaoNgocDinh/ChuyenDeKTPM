@@ -112,6 +112,13 @@
       "dependency_fetch": "owner_permits_required_downloads",
       "test_egress": "docker_bridge_outbound_internet"
     },
+    "resource_limits": {
+      "cpu_limit": 2,
+      "memory_bytes": 2147483648,
+      "pids_limit": 128,
+      "timeout_seconds": 180,
+      "output_limit_bytes": 1048576
+    },
     "profile_fields": [
       "suite_id",
       "image_digest",

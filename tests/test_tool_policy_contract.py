@@ -37,6 +37,9 @@ class PolicyDesignTests(unittest.TestCase):
         self.assertTrue({"image_digest", "argv", "cwd", "executable", "network_policy", "timeout_seconds",
                          "cpu_limit", "memory_bytes", "pids_limit", "output_limit_bytes"} <= set(runner["profile_fields"]))
         self.assertFalse(runner["environment_allowlist"])
+        self.assertEqual(runner["resource_limits"],
+                         dict(cpu_limit=2, memory_bytes=2 * 1024**3, pids_limit=128,
+                              timeout_seconds=180, output_limit_bytes=1024**2))
 
     def test_profile_requires_pinned_image_limits_and_bridge(self):
         # Values are test data only. No production defaults are set.

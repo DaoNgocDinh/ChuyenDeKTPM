@@ -1,6 +1,6 @@
 # D11 · Quyền công cụ và cô lập runner
 
-Bản đề xuất cho I13–I15. P01 và D05 xác định các vùng ghi của sáu vai trò. Chủ dự án chọn Docker, cho phép tải công cụ cần thiết và cho phép kết nối Internet chiều ra trong lúc test. Container dùng mạng bridge riêng của Docker. Chính sách cấm chia sẻ namespace mạng của host, truyền credential hoặc mount Docker socket. Các con số giới hạn tài nguyên sẽ được ghi vào profile sau khi chủ dự án chốt. [Hợp đồng vai trò](hop-dong-vai-tro.md) · [Ma trận quyền có thể kiểm tra](quyen-cong-cu.json)
+Bản đề xuất cho I13–I15. P01 và D05 xác định các vùng ghi của sáu vai trò. Chủ dự án chọn Docker, cho phép tải công cụ cần thiết và cho phép kết nối Internet chiều ra trong lúc test. Container dùng mạng bridge riêng của Docker. Chính sách cấm chia sẻ namespace mạng của host, truyền credential hoặc mount Docker socket. Giới hạn khởi đầu đã duyệt cho mỗi lượt là 2 CPU, 2 GiB RAM, 128 PID, 180 giây và tối đa 1 MiB log. [Hợp đồng vai trò](hop-dong-vai-tro.md) · [Ma trận quyền có thể kiểm tra](quyen-cong-cu.json)
 
 ### Ranh giới thực thi
 
@@ -36,6 +36,6 @@ Hai vai trò cuối được đọc tệp thường nằm trong các root đư�
 
 Profile do host quản lý gồm suite ID, digest image, executable, danh sách đối số cố định, cwd, network policy, timeout, CPU, memory, số PID và giới hạn output. Lệnh được khởi chạy bằng mảng đối số. Không ghép shell hay chuyển chuỗi command, đối số, image hoặc đường dẫn mount do model tạo thành lệnh Docker. Khi thiếu policy mạng hoặc giới hạn bắt buộc, profile chưa sẵn sàng. `materialized_profiles` hiện để trống vì D11 đặc tả hợp đồng, bằng chứng chạy suite thật thuộc I15.
 
-Khâu chuẩn bị dependency tải thành phần cần thiết và khóa phiên bản trước khi xây image. Khi test, Docker dùng mạng bridge với kết nối chiều ra. Không publish cổng, dùng host network hoặc chạy chế độ đặc quyền. Do mã được test có quyền ra Internet, host chỉ đưa fixture, bản sao mã theo commit và dữ liệu được phép vào container. Timeout/CPU/RAM/PID cần giá trị đã được duyệt trước khi mở chạy. [Runner profile](../backend/runner_profile.py) chỉ nhận cấu hình do host quản lý và kiểm tra ngay khi nạp.
+Khâu chuẩn bị dependency tải thành phần cần thiết và khóa phiên bản trước khi xây image. Khi test, Docker dùng mạng bridge với kết nối chiều ra. Không publish cổng, dùng host network hoặc chạy chế độ đặc quyền. Do mã được test có quyền ra Internet, host chỉ đưa fixture, bản sao mã theo commit và dữ liệu được phép vào container. Trường `resource_limits` trong ma trận quyền ghi giá trị đã duyệt, theo byte và giây. [Runner profile](../backend/runner_profile.py) chỉ nhận cấu hình do host quản lý và kiểm tra ngay khi nạp.
 
 **Cách test.** Chạy `python -m unittest tests.test_tool_policy_contract` để đối chiếu sáu vai trò, vùng ghi, giới hạn profile và quyền truy cập evaluation. Khi có Gateway và runner, dùng từng ca trong hai bảng để kiểm tra tác dụng phụ và lấy log thực thi.
