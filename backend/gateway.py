@@ -1,14 +1,18 @@
 """Authenticate a host step and authorize each MCP operation before executing it."""
 
+import contextvars
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from time import monotonic
 
-from backend.storage import StorageConflict
-from backend.workspace import Workspace
+from backend.storage import StorageConflict, encode
+from backend.workspace import Edit, Workspace, content_hash
+
+
+CURRENT_OPERATION = contextvars.ContextVar("gateway_current_operation", default=None)
 
 
 POLICY = json.loads((Path(__file__).resolve().parents[1] / "docs" / "quyen-cong-cu.json").read_text("utf-8"))
@@ -92,20 +96,51 @@ class Gateway:
                     worker.finish_tool_call(operation_id, "denied", None, 0)
                     worker.add_event("tool.denied", {"tool": name, "reason": type(exc).__name__,
                                                      "operation_id": operation_id}, step["id"])
+                else:
+                    if tool == "workspace.apply_patch":
+                        canonical = json.dumps(
+                            [asdict(Edit(**e)) for e in args["edits"]],
+                            ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                        ).encode()
+                        run_row = repo.get_run(host.project_id, host.run_id)
+                        checkpoint = json.loads(run_row["checkpoint_json"] or "{}")
+                        checkpoint["pending_effect"] = {
+                            "operation_id": operation_id,
+                            "step_id": step["id"],
+                            "task_id": step["task_id"],
+                            "input_commit": args["input_commit"],
+                            "patch_hash": content_hash(canonical),
+                        }
+                        repo._db.execute("UPDATE runs SET checkpoint_json=? WHERE id=?",
+                                         (encode(checkpoint), host.run_id))
         if denied:
             raise ToolDenied(denied)
+        op_binding = CURRENT_OPERATION.set(operation_id)
         try:
             result = dispatch(workspace, step, tool, args)
         except Exception:
             self._finish(host, operation_id, name, started, "error", {})
             raise RuntimeError("tool_error") from None
-        self._finish(host, operation_id, name, started, "ok", _audit_shape(result))
+        finally:
+            CURRENT_OPERATION.reset(op_binding)
+        output_commit = result.get("output_commit") if (tool == "workspace.apply_patch" and isinstance(result, dict)) else None
+        self._finish(host, operation_id, name, started, "ok", _audit_shape(result),
+                     clear_pending_effect=(tool == "workspace.apply_patch"), output_commit=output_commit)
         return result
 
-    def _finish(self, host, operation, name, started, status, summary):
+    def _finish(self, host, operation, name, started, status, summary, *, clear_pending_effect=False, output_commit=None):
         with self.database.transaction(write=True) as repo:
             worker = repo.worker_run(host.project_id, host.run_id, host.lease)
             worker.finish_tool_call(operation, status, None, int((monotonic() - started) * 1000))
+            if clear_pending_effect:
+                run_row = repo.get_run(host.project_id, host.run_id)
+                checkpoint = json.loads(run_row["checkpoint_json"] or "{}")
+                if checkpoint.get("pending_effect", {}).get("operation_id") == operation:
+                    checkpoint.pop("pending_effect", None)
+                if output_commit:
+                    checkpoint["output_commit"] = output_commit
+                repo._db.execute("UPDATE runs SET checkpoint_json=? WHERE id=?",
+                                 (encode(checkpoint), host.run_id))
             worker.add_event("tool." + status, {"operation_id": operation, "tool": name, "result": summary},
                              host.step_id)
 

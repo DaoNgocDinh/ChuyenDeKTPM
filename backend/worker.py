@@ -6,6 +6,7 @@ import threading
 from dataclasses import dataclass
 
 from .lifecycle import RunState, run_transition
+from .recovery import OperationCancelled, RunSignal
 from .storage import Repository, StorageConflict, encode, new_id
 
 
@@ -81,7 +82,7 @@ class Queue:
             previous = json.loads(Repository(db).get_run(lease.project_id, lease.run_id)["checkpoint_json"] or "{}")
             # The gate history persists across steps. Operation fields only belong to the active step.
             inherited = {k: v for k, v in previous.items() if k in
-                         ("approved_gates", "revision_route", "stale_artifacts", "pending_questions")}
+                         ("approved_gates", "revision_route", "stale_artifacts", "pending_questions", "recovered_patch")}
             saved = {**inherited, **checkpoint, "step_id": step_id, "phase": "before"}
             db.execute("UPDATE runs SET checkpoint_json=? WHERE id=?", (encode(saved), lease.run_id))
             work.add_event("step_started", {"operation_id": checkpoint["operation_id"]}, step_id)
@@ -141,17 +142,25 @@ class Worker:
 
         thread = threading.Thread(target=keep_alive, daemon=True)
         thread.start()
+        signal = RunSignal(self.queue.database, lease.project_id, lease.run_id, lease.token)
         try:
-            event = self.handler(lease, lost)
+            with signal.observe():
+                event = self.handler(lease, lost)
             if event == PERSISTED_TRANSITION:
                 with self.queue.database.transaction() as repo:
                     state = repo.get_run(lease.project_id, lease.run_id)
                 if state["worker_lease"] == lease.token:
                     raise StorageConflict("Handler returned before persisting its transition")
-            elif lost.is_set():
+            elif lost.is_set() or signal.is_set():
                 raise StorageConflict("Worker lost its lease during dispatch")
             else:
                 self.queue.release(lease, event)
+        except OperationCancelled:
+            with self.queue.database.transaction() as repo:
+                state = repo.get_run(lease.project_id, lease.run_id)
+            if state["status"] == "running" and state["worker_lease"] == lease.token:
+                self.queue.release(lease, "cancel")
+            return True
         except Exception:
             # An exception cannot prove an external operation never took effect.
             try:

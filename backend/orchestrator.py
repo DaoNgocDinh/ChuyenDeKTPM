@@ -11,6 +11,7 @@ from .contracts import Architecture, ArtifactRef, BugReport, DevResult, Plan, Re
 from .lifecycle import TaskState, task_transition
 from .llm import ModelError
 from .quota import BudgetExceededError, PricingSnapshot, QuotaLimits, RunQuotaTracker, UsageEntry
+from .recovery import OperationCancelled
 from .storage import StorageConflict, encode, new_id
 from .trace import TraceAuditService
 from .worker import PERSISTED_TRANSITION
@@ -250,32 +251,83 @@ class Orchestrator:
         workspace.initialize()
         while not lost.is_set():
             with self.database.transaction() as repo:
+                run_row = repo.get_run(lease.project_id, lease.run_id)
                 view = repo.worker_run(lease.project_id, lease.run_id, lease.token)
                 rows = {t["id"]: t for t in view.records("tasks") if t["plan_artifact_id"] == refs[2].artifact_id}
             if all(row["status"] == "done" for row in rows.values()):
                 return "final_checks_passed" if self.final_check(lease, tuple(refs)) is True else "needs_evidence"
-            ready = next((t for t in plan.tasks if rows[_task_key(refs[2], t.task_id)]["status"] in {"todo","ready","rework"}
-                          and all(rows[_task_key(refs[2], d)]["status"] == "done" for d in t.dependencies)), None)
+            checkpoint = json.loads(run_row["checkpoint_json"] or "{}")
+            recovered = checkpoint.get("recovered_patch")
+            ready = None
+            resuming_patch = False
+            if recovered:
+                ready = next((
+                    t for t in plan.tasks
+                    if _task_key(refs[2], t.task_id) == recovered.get("task_id")
+                    and rows[_task_key(refs[2], t.task_id)]["status"] == "waiting_test"
+                ), None)
+                if ready is not None:
+                    resuming_patch = True
+            if ready is None:
+                ready = next((t for t in plan.tasks if rows[_task_key(refs[2], t.task_id)]["status"] in {"todo","ready","rework"}
+                              and all(rows[_task_key(refs[2], d)]["status"] == "done" for d in t.dependencies)), None)
             if ready is None:
                 return "needs_evidence"
             key = _task_key(refs[2], ready.task_id)
             current, repairs = rows[key]["status"], rows[key]["repair_round"]
-            if current == "todo":
-                current, repairs = self._move_task(lease, key, current, "dependencies_done", repairs)
-            current, repairs = self._move_task(lease, key, current, "start", repairs)
-            self._stage(lease, "development")
-            base = workspace.head()
-            ctx = {**context, "task": ready.model_dump(), "attempt": repairs + 1, "input_commit": base}
-            if repairs:
+            if resuming_patch:
+                receipt = workspace.operation_receipt(recovered["operation_id"])
+                if (not receipt or workspace.head() != recovered["output_commit"]
+                        or receipt.get("patch_hash") != recovered["patch_hash"]):
+                    raise InvalidHandoff("Recovered patch evidence no longer matches workspace")
+                changed = sorted(
+                    f for f in workspace.git("diff", "--name-only", "-z",
+                                             recovered["input_commit"], recovered["output_commit"]).strip("\0").split("\0")
+                    if f
+                )
                 _, latest = self._snapshot(lease)
-                if "bug_report" in latest:
-                    bug = self._read(lease, latest["bug_report"], BugReport)
-                    if bug.task_id == key:
-                        ctx["bug_report"] = bug.model_dump()
-            self._call(lease, "Orchestrator", refs, {**ctx, "expected_role": "Dev"}, key)
-            dev, dev_ref = self._call(lease, "Dev", refs, ctx, key)
-            self._check_dev(lease, workspace, base, dev)
-            current, repairs = self._move_task(lease, key, current, "patch_committed", repairs)
+                patch_ref = self.store.put(
+                    lease.project_id, lease.run_id, lease.token, "patch", receipt["diff"], created_by="Dev",
+                    expected_previous_version=latest["patch"].version if "patch" in latest else 0,
+                    parent_refs=refs,
+                )
+                dev_payload = DevResult(
+                    task_id=key, input_commit=recovered["input_commit"], output_commit=recovered["output_commit"],
+                    patch_sha256=recovered["patch_hash"], changed_files=changed,
+                    summary="Recovered committed patch without replay",
+                )
+                dev_ref = self.store.put(
+                    lease.project_id, lease.run_id, lease.token, "dev_result", dev_payload, created_by="Dev",
+                    expected_previous_version=latest["dev_result"].version if "dev_result" in latest else 0,
+                    parent_refs=refs,
+                )
+                dev = RoleOutput(payload=dev_payload, patch_ref=patch_ref)
+                self._check_dev(lease, workspace, recovered["input_commit"], dev)
+                with self.database.transaction(write=True) as repo:
+                    repo.worker_run(lease.project_id, lease.run_id, lease.token)
+                    cp = json.loads(repo.get_run(lease.project_id, lease.run_id)["checkpoint_json"] or "{}")
+                    cp.pop("recovered_patch", None)
+                    cp["output_commit"] = recovered["output_commit"]
+                    repo._db.execute("UPDATE runs SET checkpoint_json=? WHERE id=?", (encode(cp), lease.run_id))
+                ctx = {**context, "task": ready.model_dump(), "attempt": repairs + 1,
+                       "input_commit": recovered["input_commit"]}
+            else:
+                if current == "todo":
+                    current, repairs = self._move_task(lease, key, current, "dependencies_done", repairs)
+                current, repairs = self._move_task(lease, key, current, "start", repairs)
+                self._stage(lease, "development")
+                base = workspace.head()
+                ctx = {**context, "task": ready.model_dump(), "attempt": repairs + 1, "input_commit": base}
+                if repairs:
+                    _, latest = self._snapshot(lease)
+                    if "bug_report" in latest:
+                        bug = self._read(lease, latest["bug_report"], BugReport)
+                        if bug.task_id == key:
+                            ctx["bug_report"] = bug.model_dump()
+                self._call(lease, "Orchestrator", refs, {**ctx, "expected_role": "Dev"}, key)
+                dev, dev_ref = self._call(lease, "Dev", refs, ctx, key)
+                self._check_dev(lease, workspace, base, dev)
+                current, repairs = self._move_task(lease, key, current, "patch_committed", repairs)
             self._stage(lease, "testing")
             tester, report_ref = self._call(lease, "Tester", [*refs, dev_ref, dev.patch_ref],
                                             {**ctx, "input_commit": dev.payload.output_commit,
@@ -350,6 +402,8 @@ class Orchestrator:
     def __call__(self, lease, lost):
         try:
             return self._pipeline(lease, lost)
+        except OperationCancelled:
+            raise
         except BudgetExceededError:
             return "quota_exceeded"
         except (InvalidHandoff, ValueError, KeyError) as exc:
