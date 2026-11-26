@@ -29,4 +29,6 @@ Bộ kiểm tra dùng các ứng dụng mẫu HTTP + SQLite (`evaluation/fixture
 - `build fail` trả `0 pass`, `skipped`/`error` không tính pass và thiếu UI driver làm đỏ ca UI.
 - Sai lệch bất kỳ tệp nào trong danh sách khóa bị phát hiện ngay bởi `evaluation/checksums.py`.
 
-**Điểm chờ kết nối tiếp theo:** Khi `I15` (Docker runner) hoàn tất, nối bước `build_check` và chạy harness `E01` đối chiếu trên môi trường Docker trước khi đóng Issue `#51`.
+**Đánh giá commit với Docker.** `evaluation.docker_build.run_docker_evaluation` nhận runner I15, Git repo, commit đầy đủ, thư mục kết quả và hàm `open_adapter(commit)` do host quản lý. Hàm này mở đúng ứng dụng đã triển khai ở commit cần chấm và trả adapter nghiệp vụ/UI qua context manager. Bộ chấm kiểm checksum của tiêu chí, chạy suite build thật, kiểm lại report và JUnit được lưu cho đúng commit. Nếu build lỗi, báo cáo vẫn có đủ mười tiêu chí, đạt 0/10, và không mở ứng dụng. Đối với S và M, người đánh giá lưu mapping adapter và cùng quy tắc chấm trước khi chạy tiêu chí. Bộ nghiệm thu và browser driver chạy bên ngoài vùng ghi của ứng dụng.
+
+Kiểm tra đường nối thật bằng `python -m unittest -v tests.test_e01_docker` sau khi đặt `KTPM_RUNNER_IMAGE` theo [hướng dẫn I15](../docs/runner-docker.md). Bộ test tạo một commit hỏng trong repo tạm, chạy build Docker và kiểm tra kết quả E01. Kết quả đánh giá các ứng dụng sinh thật cần gắn với từng run E04–E06.
