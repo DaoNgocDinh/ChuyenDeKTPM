@@ -1,0 +1,139 @@
+{
+  "status": "proposed",
+  "trusted_context": [
+    "project_id",
+    "run_id",
+    "step_id",
+    "role",
+    "task_id",
+    "input_commit"
+  ],
+  "roles": {
+    "Orchestrator": {
+      "read": [
+        "project.read_artifact"
+      ],
+      "write": [],
+      "host_outputs": [
+        "dispatch",
+        "checkpoint",
+        "event"
+      ],
+      "suites": []
+    },
+    "Requirement": {
+      "read": [
+        "project.read_artifact"
+      ],
+      "write": [],
+      "host_outputs": [
+        "requirements",
+        "clarification"
+      ],
+      "suites": []
+    },
+    "Architecture": {
+      "read": [
+        "project.read_artifact"
+      ],
+      "write": [],
+      "host_outputs": [
+        "architecture"
+      ],
+      "suites": []
+    },
+    "Planning": {
+      "read": [
+        "project.read_artifact"
+      ],
+      "write": [],
+      "host_outputs": [
+        "plan"
+      ],
+      "suites": []
+    },
+    "Dev": {
+      "read": [
+        "project.read_artifact",
+        "workspace.list_files",
+        "workspace.read_file",
+        "git.status",
+        "git.diff"
+      ],
+      "read_roots": [
+        "app",
+        "tests_dev"
+      ],
+      "write": [
+        "app"
+      ],
+      "host_outputs": [
+        "patch_reference"
+      ],
+      "suites": [
+        "build",
+        "smoke",
+        "development"
+      ]
+    },
+    "Tester": {
+      "read": [
+        "project.read_artifact",
+        "workspace.list_files",
+        "workspace.read_file",
+        "git.status",
+        "git.diff"
+      ],
+      "read_roots": [
+        "app",
+        "tests_dev"
+      ],
+      "write": [
+        "tests_dev"
+      ],
+      "host_outputs": [
+        "review",
+        "bug_report"
+      ],
+      "suites": [
+        "build",
+        "smoke",
+        "development"
+      ]
+    }
+  },
+  "runner": {
+    "backend": "docker",
+    "privileged": false,
+    "host_socket": false,
+    "read_only_root": true,
+    "run_as_root": false,
+    "network": {
+      "dependency_fetch": "owner_permits_required_downloads",
+      "test_egress": "docker_bridge_outbound_internet"
+    },
+    "resource_limits": {
+      "cpu_limit": 2,
+      "memory_bytes": 2147483648,
+      "pids_limit": 128,
+      "timeout_seconds": 180,
+      "output_limit_bytes": 1048576
+    },
+    "profile_fields": [
+      "suite_id",
+      "image_digest",
+      "executable",
+      "argv",
+      "cwd",
+      "network_policy",
+      "timeout_seconds",
+      "cpu_limit",
+      "memory_bytes",
+      "pids_limit",
+      "output_limit_bytes"
+    ],
+    "materialized_profiles": [],
+    "environment_allowlist": [],
+    "independent_suite_access": "evaluation_host_only"
+  }
+}
