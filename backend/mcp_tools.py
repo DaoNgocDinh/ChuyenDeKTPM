@@ -157,7 +157,10 @@ class ToolSession:
                     "logs/suites/" + report["report_id"] + "/report.json", report["exit_code"],
                     report["passed"], report["failed"], report["skipped"], report["errors"],
                     int(report["duration_seconds"] * 1000))
-        return {"report": report, "report_id": report_id, "runner_output": ref.model_dump()}
+        # DockerRunner writes a bounded, redacted log to this operation's host-owned directory.
+        tail = (runner.report_root / report["report_id"] / "runner.log").read_bytes()[-8192:]
+        return {"report": report, "report_id": report_id, "runner_output": ref.model_dump(),
+                "log_tail": tail.decode("utf-8", errors="replace")}
 
     def make_server(self):
         async def list_tools(ctx, params):
