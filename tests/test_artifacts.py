@@ -93,7 +93,7 @@ class ArtifactStoreTests(unittest.TestCase):
         with self.assertRaises(StorageConflict):
             self.put("log", "retry")
         self.assertIn(self.read(winner), [b"one", b"two"])
-        with patch("backend.artifacts.os.link", side_effect=OSError("disk unavailable")), self.assertRaises(OSError):
+        with patch("backend.artifacts.publish_file", side_effect=OSError("disk unavailable")), self.assertRaises(OSError):
             self.put("document", "not published")
         with self.db.transaction() as repo:
             self.assertEqual(repo.for_run(self.project, self.run).latest_version("document"), 0)

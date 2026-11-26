@@ -65,6 +65,8 @@ class ApprovalService:
         lease: str,
         gate: str,
         artifact_refs: list[ArtifactRef],
+        *,
+        questions: list[str] | None = None,
     ) -> str:
         expected_kinds = GATE_KINDS.get(gate)
         if expected_kinds is None:
@@ -83,6 +85,11 @@ class ApprovalService:
                 "gate": gate,
                 "artifacts": [ref.model_dump(mode="json") for ref in artifact_refs],
             }
+            checkpoint.pop("pending_questions", None)
+            if questions:
+                if gate != "requirements":
+                    raise ValueError("Only requirements can request clarification")
+                checkpoint["pending_questions"] = {f"Q{i}": text for i, text in enumerate(questions, 1)}
             repo._db.execute(
                 "UPDATE runs SET status=?, checkpoint_json=?, worker_lease=NULL, lease_expires_at=NULL "
                 "WHERE id=? AND status='running'",
@@ -125,6 +132,8 @@ class ApprovalService:
             pending = checkpoint.get("pending_gate")
             if not pending or pending.get("gate") != gate:
                 raise InvalidGateTransition(f"invalid_transition: run is not waiting at gate {gate}")
+            if decision == "approve" and gate == "requirements" and checkpoint.get("pending_questions"):
+                raise InvalidGateTransition("Requirements are waiting for clarification")
 
             reader = repo.for_run(project_id, run_id)
             self._verify_gate_refs(reader, run_id, gate, artifact_refs)
@@ -225,12 +234,31 @@ class ApprovalService:
 
         with self.database.transaction(write=True) as repo:
             reader = repo.for_run(project_id, run_id)
+            run = repo.get_run(project_id, run_id)
             try:
                 row = reader.artifact(artifact_ref.artifact_id, artifact_ref.version)
             except KeyError as exc:
                 raise ApprovalVersionConflict("approval_version_conflict: unknown clarification artifact") from exc
             if row["sha256"] != artifact_ref.sha256 or reader.latest_version(row["type"]) != artifact_ref.version:
                 raise ApprovalVersionConflict("approval_version_conflict: clarification targets stale version")
+            checkpoint = json.loads(run["checkpoint_json"] or "{}")
+            outstanding = checkpoint.get("pending_questions", {})
+            if outstanding:
+                refs = checkpoint.get("pending_gate", {}).get("artifacts", [])
+                keys = [answer["question_id"] for answer in answers]
+                if (run["status"] != "waiting_approval" or artifact_ref.model_dump() not in refs
+                        or len(keys) != len(set(keys)) or not set(keys) <= outstanding.keys()):
+                    raise ApprovalVersionConflict("Clarification does not match pending questions")
+                for key in keys:
+                    del outstanding[key]
+                status = run["status"]
+                if not outstanding:
+                    checkpoint.pop("pending_questions")
+                    checkpoint.pop("pending_gate")
+                    checkpoint["revision_route"] = "Requirement"
+                    status = run_transition(RunState.WAITING, "request_revision").value
+                repo._db.execute("UPDATE runs SET checkpoint_json=?,status=? WHERE id=?",
+                                 (encode(checkpoint), status, run_id))
             repo._db.execute(
                 "INSERT INTO events(run_id, step_id, event_type, payload_json) VALUES (?, NULL, ?, ?)",
                 (
