@@ -1,0 +1,114 @@
+{
+  "case_id": "A3",
+  "issue": "D04",
+  "version": "0.1",
+  "review_status": "Chủ dự án đã duyệt 10 tiêu chí và fixture trong chat ngày 26/11/2026.",
+  "reviewed_commit": "959a1dba5dbe2ec1ee1b2d24515748877f9ddcc3",
+  "source": "Kế hoạch Word mục 5.1, P01 và issue D04.",
+  "usage": "Cấu hình S và M nhận cùng brief, cùng câu trả lời khi hỏi. Giữ fixtures và criteria ở bộ chấm độc lập. Mỗi tiêu chí bắt đầu trên một kho dữ liệu sạch rồi nạp riêng những bản ghi được nêu trong thao tác.",
+  "brief": "Xây ứng dụng kho hàng nhỏ. Người dùng quản lý Item, ghi nhận StockMovement khi nhập hoặc xuất, xem tồn và lịch sử trên web. Số lượng của mỗi lần nhập/xuất là số nguyên dương. Từ chối xuất vượt tồn, cập nhật tồn và lịch sử nhất quán, giữ dữ liệu sau khi khởi động lại.",
+  "clarification_script": [
+    {
+      "question": "Số lượng hợp lệ là gì?",
+      "answer": "Chủ dự án đã chốt mỗi lần nhập hoặc xuất có số lượng là số nguyên dương."
+    },
+    {
+      "question": "Xuất lớn hơn tồn có được ghi nhận không?",
+      "answer": "Chủ dự án đã chốt từ chối xuất vượt tồn."
+    },
+    {
+      "question": "Bài nào dùng khi so sánh M có và không có skill?",
+      "answer": "Theo P01, dùng chính A3 và bộ chấm đã khóa cho cả hai cấu hình khi thực nghiệm bổ sung được phê duyệt."
+    }
+  ],
+  "fixtures": {
+    "K1": {
+      "name": "Bút xanh",
+      "opening_balance": 0
+    },
+    "K2": {
+      "name": "Sổ tay",
+      "opening_balance": 0
+    },
+    "movements": [
+      {
+        "item": "K1",
+        "type": "nhập",
+        "quantity": 5
+      },
+      {
+        "item": "K1",
+        "type": "xuất",
+        "quantity": 2
+      },
+      {
+        "item": "K2",
+        "type": "nhập",
+        "quantity": 4
+      }
+    ]
+  },
+  "criteria": [
+    {
+      "id": "A3-01",
+      "title": "Đọc mặt hàng",
+      "action": "Chuẩn bị hai mặt hàng như fixture và mở danh sách trước khi có giao dịch.",
+      "expected": "K1 và K2 có thể phân biệt được, đúng tên và tồn đầu kỳ bằng 0 của fixture."
+    },
+    {
+      "id": "A3-02",
+      "title": "Nhập kho",
+      "action": "Bắt đầu với K1 có tồn 0. Nhập 5.",
+      "expected": "Tồn K1 tăng thành 5."
+    },
+    {
+      "id": "A3-03",
+      "title": "Xuất kho",
+      "action": "Bắt đầu với tồn K1 bằng 5. Xuất 2.",
+      "expected": "Tồn K1 còn 3."
+    },
+    {
+      "id": "A3-04",
+      "title": "Xuất đúng số tồn",
+      "action": "Bắt đầu với tồn K1 bằng 5. Xuất đúng 5.",
+      "expected": "Giao dịch thành công và tồn về 0."
+    },
+    {
+      "id": "A3-05",
+      "title": "Chặn số lượng không hợp lệ",
+      "action": "Với K1 đang có tồn 5, thử từng giá trị 0, -1 và 1.5 cho cả nhập và xuất.",
+      "expected": "Tất cả lần thử bị từ chối, tồn vẫn bằng 5 và số giao dịch không tăng."
+    },
+    {
+      "id": "A3-06",
+      "title": "Chặn xuất vượt tồn",
+      "action": "Với K1 đang có tồn 3, thử xuất 4.",
+      "expected": "Ứng dụng từ chối. Tồn vẫn bằng 3 và không ghi thêm giao dịch xuất."
+    },
+    {
+      "id": "A3-07",
+      "title": "Lịch sử theo mặt hàng",
+      "action": "Nạp lần lượt ba giao dịch trong fixture rồi xem lịch sử K1 và K2.",
+      "expected": "K1 có đúng hai giao dịch nhập 5 và xuất 2. K2 có đúng một giao dịch nhập 4, không lẫn dòng của K1."
+    },
+    {
+      "id": "A3-08",
+      "title": "Đối soát tồn và lịch sử",
+      "action": "Từ fixture hoàn chỉnh, nhập thêm 1 vào K1, sau đó đối chiếu tổng nhập trừ tổng xuất cho từng mặt hàng.",
+      "expected": "Tồn hiển thị bằng phép đối soát. K1 có 4 với ba giao dịch. K2 có 4 với một giao dịch."
+    },
+    {
+      "id": "A3-09",
+      "title": "Dữ liệu sau restart",
+      "action": "Nạp bộ fixture hoàn chỉnh, tắt rồi mở lại ứng dụng trên cùng kho dữ liệu.",
+      "expected": "Đọc được K1 tồn 3, K2 tồn 4 và ba giao dịch gốc đúng mặt hàng, chiều và số lượng."
+    },
+    {
+      "id": "A3-10",
+      "title": "Thao tác từ giao diện",
+      "action": "Mở giao diện K1 có tồn 0, nhập 5 qua biểu mẫu và mở lịch sử.",
+      "expected": "Nhìn thấy tồn 5 và giao dịch nhập 5 của Bút xanh trên giao diện."
+    }
+  ],
+  "check": "Chạy node -p \"require('./evaluation/A3.json').criteria.map(c => c.id).join(' ')\" từ gốc repo. Kết quả phải liệt kê đúng A3-01 đến A3-10. Đối chiếu từng kết quả với fixture, rồi ghi quyết định vào issue D04. E01 sẽ chạy bộ kiểm thử độc lập trên ứng dụng sinh ra."
+}
