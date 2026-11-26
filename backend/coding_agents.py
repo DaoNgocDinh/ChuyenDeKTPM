@@ -163,7 +163,9 @@ class CodingAgents:
         if not raw_dev:
             raise ValueError("Tester requires DevResult context")
         dev = DevResult.model_validate(raw_dev)
-        if dev.task_id != order.task_id or dev.output_commit != order.context.get("input_commit"):
+        infra_retry = int(order.context.get("infra_retry", 0) or 0)
+        input_commit = order.context.get("input_commit")
+        if dev.task_id != order.task_id or not input_commit or (infra_retry == 0 and dev.output_commit != input_commit):
             raise ValueError("DevResult does not match assigned task or commit")
         if not self.image:
             raise ValueError("missing Docker runner image")
@@ -214,20 +216,38 @@ class CodingAgents:
                 raise ValueError("file catalog exceeds limit")
             existing = set(catalog["files"])
             task = order.context["task"]
+            bug_report = order.context.get("bug_report")
             paths = [p for p in task["files"] if p in existing]
             read_files = {}
             for p in paths:
                 read_files[p] = await tool("workspace.read_file", path=p)
+            test_files = {}
+            if bug_report:
+                read_size = len(json.dumps(read_files, ensure_ascii=False))
+                for p in sorted(f for f in existing if f.startswith("tests_dev/")):
+                    observed = await tool("workspace.read_file", path=p)
+                    entry_size = len(json.dumps({p: observed}, ensure_ascii=False))
+                    if read_size + entry_size > 140_000:
+                        break
+                    test_files[p] = observed
+                    read_size += entry_size
             artifacts = []
             for ref in order.inputs[:3]:
                 doc = await tool("project.read_artifact", artifact_id=ref.artifact_id,
                                  version=ref.version, sha256=ref.sha256)
                 artifacts.append(doc["text"])
             details = {"task": task, "source_artifacts": artifacts, "known_files": sorted(existing),
-                       "files": read_files, "bug": order.context.get("bug_report")}
+                       "files": read_files, "bug": bug_report}
+            if test_files:
+                details["test_files"] = test_files
             if len(json.dumps(details, ensure_ascii=False)) > 220_000:
                 raise ValueError("task exceeds model context allowance")
-            prompt = (skills.context(order.role) + "\nImplement only the assigned task. Return summary, blocker "
+            rework_hint = (
+                " This is a repair round for the attached bug report: fix the root cause in app/ "
+                "and keep all existing regression tests in tests_dev/ passing." if bug_report else ""
+            )
+            prompt = (skills.context(order.role) + "\nImplement only the assigned task." + rework_hint
+                      + " Return summary, blocker "
                       "(null if implemented), and whole UTF-8 file replacements in files [{path,text}]. "
                       "Use null text only to delete an existing file you inspected. Only change app/. "
                       "For a frontend task include the reproducible npm lockfile. Respond with JSON and "
@@ -246,7 +266,10 @@ class CodingAgents:
                               "text": item.text})
             receipt = await tool("workspace.apply_patch", input_commit=base, edits=edits)
             patch = self._artifact(order, "patch", receipt["diff"])
-            suite = "smoke" if "tests_dev/test_smoke.py" in existing else "build"
+            if bug_report and any(p.startswith("tests_dev/") for p in existing):
+                suite = "development"
+            else:
+                suite = "smoke" if "tests_dev/test_smoke.py" in existing else "build"
             check = await tool("tests.run_suite", suite_id=suite)
             self._artifact(order, "log", json.dumps({"self_check": check, "patch_id": receipt["patch_id"]}))
             payload = DevResult(task_id=order.task_id, input_commit=base, output_commit=receipt["output_commit"],
@@ -265,7 +288,7 @@ class CodingAgents:
                 return await invoke(client, uuid4().hex, name, args)
             descriptor = await discover(client)
             base = (await tool("git.status"))["head"]
-            if base != dev.output_commit:
+            if base != order.context["input_commit"]:
                 raise ValueError("workspace commit changed before Tester dispatch")
             diff_res = await tool("git.diff", before=dev.input_commit, after=dev.output_commit)
             catalog = await tool("workspace.list_files")

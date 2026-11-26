@@ -175,6 +175,29 @@ class Orchestrator:
             repo.worker_run(lease.project_id, lease.run_id, lease.token)
             repo._db.execute("UPDATE runs SET stage=? WHERE id=?", (stage, lease.run_id))
 
+    def _update_checkpoint(self, lease, **updates):
+        with self.database.transaction(write=True) as repo:
+            repo.worker_run(lease.project_id, lease.run_id, lease.token)
+            checkpoint = json.loads(repo.get_run(lease.project_id, lease.run_id)["checkpoint_json"] or "{}")
+            for key, value in updates.items():
+                if value is None:
+                    checkpoint.pop(key, None)
+                else:
+                    checkpoint[key] = value
+            repo._db.execute("UPDATE runs SET checkpoint_json=? WHERE id=?", (encode(checkpoint), lease.run_id))
+        return checkpoint
+
+    def _latest_task_bug(self, lease, task_id):
+        with self.database.transaction() as repo:
+            rows = repo.for_run(lease.project_id, lease.run_id).records("artifacts")
+        bugs = sorted((r for r in rows if r["type"] == "bug_report"), key=lambda r: r["version"], reverse=True)
+        for row in bugs:
+            ref = _ref(row)
+            bug = self._read(lease, ref, BugReport)
+            if bug.task_id == task_id:
+                return ref, bug
+        return None, None
+
     def _gate(self, lease, name, refs, questions=None):
         self.gates.open_gate(lease.project_id, lease.run_id, lease.token, name, list(refs), questions=questions)
         return PERSISTED_TRANSITION
@@ -266,67 +289,119 @@ class Orchestrator:
             self._stage(lease, "development")
             base = workspace.head()
             ctx = {**context, "task": ready.model_dump(), "attempt": repairs + 1, "input_commit": base}
+            dev_inputs = list(refs)
             if repairs:
-                _, latest = self._snapshot(lease)
-                if "bug_report" in latest:
-                    bug = self._read(lease, latest["bug_report"], BugReport)
-                    if bug.task_id == key:
-                        ctx["bug_report"] = bug.model_dump()
+                bug_ref, bug = self._latest_task_bug(lease, key)
+                if bug_ref and bug:
+                    ctx["bug_report"] = bug.model_dump()
+                    dev_inputs.append(bug_ref)
             self._call(lease, "Orchestrator", refs, {**ctx, "expected_role": "Dev"}, key)
-            dev, dev_ref = self._call(lease, "Dev", refs, ctx, key)
+            dev, dev_ref = self._call(lease, "Dev", dev_inputs, ctx, key)
             self._check_dev(lease, workspace, base, dev)
             current, repairs = self._move_task(lease, key, current, "patch_committed", repairs)
             self._stage(lease, "testing")
-            tester, report_ref = self._call(lease, "Tester", [*refs, dev_ref, dev.patch_ref],
-                                            {**ctx, "input_commit": dev.payload.output_commit,
-                                             "dev_result": dev.payload.model_dump()}, key)
-            row = self._check_test(lease, workspace, dev.payload, tester)
-            for fr in ready.requirement_ids:
-                self.audit.link_fr_chain(lease.project_id, lease.run_id, lease.token, fr_id=fr, task_id=key,
-                                         patch_artifact_id=dev.patch_ref.artifact_id, test_report_id=row["id"],
-                                         evidence_uri=row["report_uri"])
-            if tester.payload.all_passed:
-                self._move_task(lease, key, current, "verified", repairs)
-                continue
-            if not tester.bug:
-                return "needs_evidence"
-            bug = BugReport.model_validate(tester.bug)
-            if bug.task_id != key or bug.commit != tester.payload.commit or bug.report not in {report_ref, tester.payload.runner_output}:
-                raise InvalidHandoff("Bug references another task, commit, or report")
-            _, latest = self._snapshot(lease)
-            self.store.put(lease.project_id, lease.run_id, lease.token, "bug_report", bug, created_by="Tester",
-                           expected_previous_version=latest["bug_report"].version if "bug_report" in latest else 0,
-                           parent_refs=[report_ref])
-            if bug.category != "code":
+
+            max_infra_retries = context.get("config", {}).get("max_infra_retries", 2)
+            if type(max_infra_retries) is not int or max_infra_retries < 0:
+                raise ValueError("max_infra_retries must be a non-negative integer")
+            run_row, _ = self._snapshot(lease)
+            checkpoint = json.loads(run_row["checkpoint_json"] or "{}")
+            infra_map = dict(checkpoint.get("infra_retries") or {})
+            infra_retries = int(infra_map.get(key, 0))
+
+            while not lost.is_set():
+                tester_ctx = {
+                    **ctx,
+                    "input_commit": workspace.head(),
+                    "dev_result": dev.payload.model_dump(),
+                    "infra_retry": infra_retries,
+                }
+                tester, report_ref = self._call(lease, "Tester", [*refs, dev_ref, dev.patch_ref], tester_ctx, key)
+                row = self._check_test(lease, workspace, dev.payload, tester)
+                for fr in ready.requirement_ids:
+                    self.audit.link_fr_chain(lease.project_id, lease.run_id, lease.token, fr_id=fr, task_id=key,
+                                             patch_artifact_id=dev.patch_ref.artifact_id, test_report_id=row["id"],
+                                             evidence_uri=row["report_uri"])
+                if tester.payload.all_passed:
+                    self._move_task(lease, key, current, "verified", repairs)
+                    break
+                if not tester.bug:
+                    return "needs_evidence"
+                bug = BugReport.model_validate(tester.bug)
+                if bug.task_id != key or bug.commit != tester.payload.commit or bug.report not in {report_ref, tester.payload.runner_output}:
+                    raise InvalidHandoff("Bug references another task, commit, or report")
+                _, latest = self._snapshot(lease)
+                bug_ref = self.store.put(
+                    lease.project_id, lease.run_id, lease.token, "bug_report", bug, created_by="Tester",
+                    expected_previous_version=latest["bug_report"].version if "bug_report" in latest else 0,
+                    parent_refs=[report_ref],
+                )
+                self.audit.record_event(
+                    lease.project_id, lease.run_id, lease.token, "bug.recorded",
+                    {"task_id": key, "category": bug.category, "bug_artifact_id": bug_ref.artifact_id,
+                     "bug_version": bug_ref.version, "repair_round": repairs, "infra_retry": infra_retries},
+                    correlation_id=new_id(),
+                )
+                if bug.category == "code":
+                    current, _ = self._move_task(lease, key, current, "code_bug", repairs)
+                    if current == "blocked":
+                        return "repairs_exhausted"
+                    break
                 if bug.category in {"requirements", "design"}:
                     route = "Requirement" if bug.category == "requirements" else "Architecture"
-                    with self.database.transaction(write=True) as repo:
-                        repo.worker_run(lease.project_id, lease.run_id, lease.token)
-                        checkpoint = json.loads(repo.get_run(lease.project_id, lease.run_id)["checkpoint_json"])
-                        checkpoint["revision_route"] = route
-                        repo._db.execute("UPDATE runs SET checkpoint_json=? WHERE id=?", (encode(checkpoint), lease.run_id))
+                    self._update_checkpoint(lease, revision_route=route, routing_bug=bug_ref.model_dump())
+                    self.audit.record_event(
+                        lease.project_id, lease.run_id, lease.token, "fault.routed",
+                        {"task_id": key, "category": bug.category, "target_role": route,
+                         "bug_artifact_id": bug_ref.artifact_id, "bug_version": bug_ref.version},
+                        correlation_id=new_id(),
+                    )
                     return self._pipeline(lease, lost)
+                if bug.category == "infrastructure":
+                    if infra_retries < max_infra_retries:
+                        infra_retries += 1
+                        infra_map[key] = infra_retries
+                        self._update_checkpoint(lease, infra_retries=infra_map)
+                        self.audit.record_event(
+                            lease.project_id, lease.run_id, lease.token, "infra.retry",
+                            {"task_id": key, "infra_retry": infra_retries, "max_infra_retries": max_infra_retries,
+                             "repair_round": repairs, "bug_artifact_id": bug_ref.artifact_id},
+                            correlation_id=new_id(), error_category="environment",
+                        )
+                        continue
+                    self.audit.record_event(
+                        lease.project_id, lease.run_id, lease.token, "infra.exhausted",
+                        {"task_id": key, "infra_retries": infra_retries, "max_infra_retries": max_infra_retries,
+                         "repair_round": repairs, "bug_artifact_id": bug_ref.artifact_id},
+                        correlation_id=new_id(), error_category="environment",
+                    )
+                    return "needs_evidence"
                 return "needs_evidence"
-            current, _ = self._move_task(lease, key, current, "code_bug", repairs)
-            if current == "blocked":
-                return "repairs_exhausted"
         raise StorageConflict("Worker lost ownership")
 
     def _pipeline(self, lease, lost):
         run, latest = self._snapshot(lease)
         checkpoint = json.loads(run["checkpoint_json"] or "{}")
         route = checkpoint.get("revision_route")
+        routing_bug = None
+        if checkpoint.get("routing_bug"):
+            routing_bug = self._read(lease, ArtifactRef.model_validate(checkpoint["routing_bug"]), BugReport).model_dump()
         with self.database.transaction() as repo:
             project = repo.get_project(lease.project_id)
             rows = repo.for_run(lease.project_id, lease.run_id).records("events")
         context = {"project": project, "config": json.loads(run["config_json"]),
                    "feedback": [json.loads(r["payload_json"]) for r in rows
                                 if r["event_type"] in {"clarification.recorded", "gate.revision_requested"}]}
+        if routing_bug is not None:
+            context["routing_bug"] = routing_bug
         self._call(lease, "Orchestrator", [], {**context, "expected_role": route or "Requirement"})
         req = latest.get("requirements")
         self._stage(lease, "requirements")
         if not req or route == "Requirement":
             _, req = self._call(lease, "Requirement", [req] if req else [], context)
+            if route == "Requirement":
+                self._update_checkpoint(lease, revision_route=None, routing_bug=None)
+                route = None
         requirements = self._read(lease, req, Requirements)
         if not self.gates.is_gate_approved(lease.project_id, lease.run_id, "requirements", [req]):
             return self._gate(lease, "requirements", [req], requirements.questions)
@@ -334,6 +409,9 @@ class Orchestrator:
         arch = latest.get("architecture")
         if not arch or route == "Architecture" or self._read(lease, arch, Architecture).requirements != req:
             _, arch = self._call(lease, "Architecture", [req], {**context, "requirements": requirements.model_dump()})
+            if route == "Architecture":
+                self._update_checkpoint(lease, revision_route=None, routing_bug=None)
+                route = None
         architecture = self._read(lease, arch, Architecture)
         self._stage(lease, "planning")
         plan_ref = latest.get("plan")
@@ -342,6 +420,9 @@ class Orchestrator:
             _, plan_ref = self._call(lease, "Planning", [req, arch], {**context, "requirements": requirements.model_dump(),
                                                                      "architecture": architecture.model_dump()})
             plan = self._read(lease, plan_ref, Plan)
+            if route == "Planning":
+                self._update_checkpoint(lease, revision_route=None, routing_bug=None)
+                route = None
         check_handoff(requirements, architecture, plan, req, arch)
         if not self.gates.is_gate_approved(lease.project_id, lease.run_id, "architecture_plan", [arch, plan_ref]):
             return self._gate(lease, "architecture_plan", [arch, plan_ref])
