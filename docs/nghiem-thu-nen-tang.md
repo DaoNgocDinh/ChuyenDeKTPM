@@ -1,6 +1,6 @@
 # D01 · Nghiệm thu nền tảng sáu vai trò
 
-**Bản đề xuất, chờ chủ dự án duyệt để khóa phạm vi tuần 2.** Người duyệt tất cả các dòng dưới đây là chủ dự án. Nguồn là bản Word ngày 17/11/2026, mục 3.1–3.3, và [đề cương P01](ke-hoach.md). SHA256 bản Word là `975228EA14EDCE90CFECBBFE05C9911DD33B35FD1A4ACEF75577A9499D884C9F`.
+**Chủ dự án đã duyệt phạm vi D01 trong chat ngày 26/11/2026.** Quyết định áp dụng cho sáu luồng và 18 yêu cầu của [bản đã trình duyệt](https://github.com/DaoNgocDinh/ChuyenDeKTPM/commit/30cb6f389c02139523357fbbb9c9b2801e2a018c). Người duyệt bằng chứng khi nghiệm thu hệ thống là chủ dự án. Nguồn là bản Word ngày 17/11/2026, mục 3.1–3.3, và [đề cương P01](ke-hoach.md). SHA256 bản Word là `975228EA14EDCE90CFECBBFE05C9911DD33B35FD1A4ACEF75577A9499D884C9F`.
 
 ## Người dùng và luồng thao tác
 
@@ -44,4 +44,4 @@ Mỗi dòng mô tả thao tác cần thực hiện khi có bản chạy và bằ
 
 Chạy `git grep -En "^\| (FR|NFR)[0-9]{2} " -- docs/nghiem-thu-nen-tang.md`. Đối chiếu 18 dòng liên tiếp FR01–FR10, NFR01–NFR08 với hai bảng ở mục 3.2 và 3.3 bản Word. Kiểm tra hai cổng, luồng sửa và khôi phục trong bảng luồng. Bằng chứng chạy hệ thống sẽ được bổ sung tại V01 và V02.
 
-Chủ dự án cần ghi quyết định duyệt hoặc chỉ ra dòng cần sửa trong [issue D01](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/13).
+Theo dõi bằng chứng thực thi và các đề xuất thay đổi phạm vi qua [issue D01](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/13).
