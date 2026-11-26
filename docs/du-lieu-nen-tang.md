@@ -1,6 +1,6 @@
 # D09 · SQLite của nền tảng
 
-**Trạng thái: đề xuất chờ chủ dự án duyệt ERD, ràng buộc và cách nâng phiên bản.** [Migration 001](../backend/migrations/001_platform.sql) triển khai 11 bảng của mục 3.8 bản Word. DB nền tảng do API và worker truy cập qua repository. Ứng dụng được sinh giữ DB nghiệp vụ trong workspace riêng. Host cung cấp các thao tác đọc/ghi định sẵn, model chỉ được dùng các tool đã cấp quyền.
+**Chủ dự án đã duyệt ERD, ràng buộc và cách nâng phiên bản của D09 trong chat.** Bản được duyệt là [7a1e95e](https://github.com/DaoNgocDinh/ChuyenDeKTPM/commit/7a1e95e). [Migration 001](../backend/migrations/001_platform.sql) triển khai 11 bảng của mục 3.8 bản Word. DB nền tảng do API và worker truy cập qua repository. Ứng dụng được sinh giữ DB nghiệp vụ trong workspace riêng. Host cung cấp các thao tác đọc/ghi định sẵn, model chỉ được dùng các tool đã cấp quyền.
 
 ```mermaid
 erDiagram
@@ -46,4 +46,4 @@ Host chọn root `workspaces/{project_id}/{run_id}/` bằng ID đã kiểm tra. 
 3. SQL bao cả thay đổi schema và `user_version` trong một transaction. Nếu migration lỗi, rollback transaction đang mở trước khi trả connection. Khi nâng DB đang dùng, sao lưu nhất quán và kiểm `foreign_key_check` trước khi cho worker chạy lại.
 4. Gộp các thay đổi phụ thuộc nhau trong transaction ngắn, ví dụ cập nhật quyết định và trạng thái cổng hoặc ghi checkpoint và event. Giải phóng khóa trước khi gọi model, Git và runner. Host kiểm trạng thái và lease trong câu lệnh cập nhật có điều kiện để tránh hai worker nhận cùng job. Thao tác ngoài DB dùng operation ID và bước phục hồi.
 
-**Cách test** · Từ gốc nhánh chạy `python -m unittest tests.test_platform_schema -v`. Bộ test áp migration thật lên SQLite, thử đường hợp lệ, ghi trùng, sai phiên bản/hash, nhầm run, tự phụ thuộc và lỗi migration giữa chừng. Kết quả mong đợi là tất cả ca đều đạt. Chủ dự án duyệt schema tại [D09](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/21) sau khi đối chiếu hợp đồng D07 và trạng thái D08.
+**Cách test** · Từ gốc nhánh chạy `python -m unittest tests.test_platform_schema -v`. Bộ test áp migration thật lên SQLite, thử đường hợp lệ, ghi trùng, sai phiên bản/hash, nhầm run, tự phụ thuộc và lỗi migration giữa chừng. Kết quả mong đợi là cả tám ca đều đạt. [Issue D09](https://github.com/DaoNgocDinh/ChuyenDeKTPM/issues/21).
