@@ -36,6 +36,8 @@ RUN_EVENTS = {
     (R.RECOVERY, "reconciled"): R.QUEUED,
     (R.RUNNING, "quota_exceeded"): R.REVIEW,
     (R.RUNNING, "repairs_exhausted"): R.REVIEW,
+    (R.RUNNING, "invalid_handoff"): R.REVIEW,
+    (R.RUNNING, "needs_evidence"): R.REVIEW,
     (R.REVIEW, "owner_resume"): R.QUEUED,
     (R.RUNNING, "final_checks_passed"): R.COMPLETED,
     (R.RUNNING, "irrecoverable_error"): R.FAILED,
