@@ -1,0 +1,7 @@
+# I06 · Điều phối theo trạng thái
+
+Truyền `Orchestrator(queue, store, dispatch, final_check)` làm handler cho `Worker`. Host phát `WorkOrder` với vai trò, project/run, lease, bước, task, tham chiếu đầu vào và nội dung đã xác minh. Adapter trả `RoleOutput` chứa payload và usage. Dev bổ sung patch_ref của diff thật. Tester bổ sung report_id của runner. Callback final_check phải xác nhận lần kiểm độc lập trước khi host ghi completed.
+
+Host ghi sự kiện bàn giao, bước, quota và checkpoint vào SQLite. Hai cổng chờ đúng phiên bản và hash, rồi worker mới được nhận lại run. Câu hỏi cần làm rõ có mã Q1, Q2… gắn với phiên bản requirements. Sau khi trả lời đủ, worker tạo bản requirements mới để duyệt. Mỗi task của một plan có ID bền riêng. Scheduler chỉ mở task khi tất cả tiền nhiệm đã đạt. Tester có thể ghi test phát triển ở commit kế tiếp, host đối chiếu Git, nội dung diff, task và kết quả runner trước khi chuyển trạng thái. Lỗi chưa xác định cần chủ dự án kiểm tra bằng chứng.
+
+**Cách test** · Chạy `uv run --frozen python -m unittest tests.test_orchestrator -v`. Fixture dùng hai task phụ thuộc khai báo ngược thứ tự, sáu vai trò với model fixture, SQLite và Git thật, cùng chương trình Python con chạy kiểm tra. Các ca còn lại kiểm xác nhận làm rõ, chặn sửa app từ Tester, thiếu báo cáo runner và hết quota. Kết quả này dùng để kiểm tra host. Thực nghiệm so sánh bằng model thật thuộc bộ run E.

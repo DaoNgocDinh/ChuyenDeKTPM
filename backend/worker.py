@@ -10,6 +10,7 @@ from .storage import Repository, StorageConflict, encode, new_id
 
 
 logger = logging.getLogger(__name__)
+PERSISTED_TRANSITION = "host_transition_persisted"
 
 
 @dataclass(frozen=True)
@@ -77,7 +78,11 @@ class Queue:
                           (lease.run_id,)).fetchone():
                 raise StorageConflict("Run already has an unfinished step")
             work.start_step(step_id, role, attempt, inputs, task_id)
-            saved = {**checkpoint, "step_id": step_id, "phase": "before"}
+            previous = json.loads(Repository(db).get_run(lease.project_id, lease.run_id)["checkpoint_json"] or "{}")
+            # The gate history persists across steps. Operation fields only belong to the active step.
+            inherited = {k: v for k, v in previous.items() if k in
+                         ("approved_gates", "revision_route", "stale_artifacts", "pending_questions")}
+            saved = {**inherited, **checkpoint, "step_id": step_id, "phase": "before"}
             db.execute("UPDATE runs SET checkpoint_json=? WHERE id=?", (encode(saved), lease.run_id))
             work.add_event("step_started", {"operation_id": checkpoint["operation_id"]}, step_id)
 
@@ -138,9 +143,15 @@ class Worker:
         thread.start()
         try:
             event = self.handler(lease, lost)
-            if lost.is_set():
+            if event == PERSISTED_TRANSITION:
+                with self.queue.database.transaction() as repo:
+                    state = repo.get_run(lease.project_id, lease.run_id)
+                if state["worker_lease"] == lease.token:
+                    raise StorageConflict("Handler returned before persisting its transition")
+            elif lost.is_set():
                 raise StorageConflict("Worker lost its lease during dispatch")
-            self.queue.release(lease, event)
+            else:
+                self.queue.release(lease, event)
         except Exception:
             # An exception cannot prove an external operation never took effect.
             try:

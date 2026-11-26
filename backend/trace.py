@@ -133,6 +133,17 @@ class TraceAuditService:
             raise ValueError("fr_id and evidence_uri are required")
         with self.database.transaction(write=True) as repo:
             writer = repo.worker_run(project_id, run_id, lease)
+            task = next((t for t in writer.records("tasks") if t["id"] == task_id), None)
+            if not task or fr_id not in json.loads(task["requirement_refs_json"]):
+                raise ValueError("Task does not implement this requirement")
+            if patch_artifact_id is not None and not any(
+                a["id"] == patch_artifact_id and a["type"] == "patch" for a in writer.records("artifacts")
+            ):
+                raise ValueError("Unknown patch for this run")
+            if test_report_id is not None and not any(
+                r["id"] == test_report_id and r["task_id"] == task_id for r in writer.records("test_reports")
+            ):
+                raise ValueError("Report does not belong to this task")
             writer.add_trace("requirement", fr_id, "task", task_id, evidence_uri)
             if patch_artifact_id is not None:
                 writer.add_trace("task", task_id, "patch", patch_artifact_id, evidence_uri)
@@ -215,6 +226,15 @@ class TraceAuditService:
             gaps.append("missing_patch")
         if not reports:
             gaps.append("missing_test_report")
+        for task in linked_tasks:
+            own_patches = {ln["target_id"] for ln in links if ln["source_type"] == "task"
+                           and ln["source_id"] == task and ln["target_type"] == "patch"
+                           and artifacts_by_id.get(ln["target_id"], {}).get("type") == "patch"}
+            connected = any(ln["source_type"] == "patch" and ln["source_id"] in own_patches
+                            and ln["target_type"] == "test"
+                            and reports_by_id.get(ln["target_id"], {}).get("task_id") == task for ln in links)
+            if not connected:
+                gaps.append("incomplete_task_chain:" + task)
 
         return FRTraceChain(
             run_id=run_id,
