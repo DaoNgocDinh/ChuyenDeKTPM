@@ -17,3 +17,18 @@ Khi có triển khai tương ứng, sáu skill dùng chung thư mục `skills/`,
 ### Kiểm tra cấu trúc
 
 Chạy `git ls-tree --name-only HEAD` và mở đường dẫn đề cương ở trên. Nội dung đề cương được giữ nguyên từ commit duyệt `8c2fe71`.
+
+### Cài và test I01
+
+Dùng Python 3.11+, uv và Node 20.19+ trong dòng 20, hoặc Node 22.12+.
+
+```sh
+uv sync --frozen
+uv run --frozen ruff check backend tests
+uv run --frozen python -m unittest discover -v
+npm --prefix frontend ci
+npm --prefix frontend run build
+uv run --frozen uvicorn backend.api:app --host 127.0.0.1 --port 8000
+```
+
+Mở `http://127.0.0.1:8000/`. Giao diện hiển thị “API đang hoạt động.” khi `GET /health` trả 200. Phát triển giao diện bằng `npm --prefix frontend run dev` trong terminal thứ hai. Mẫu `frontend/.env.example` cho phép đặt port proxy của dev server.
