@@ -153,9 +153,10 @@ class Orchestrator:
                 actual = self.store.put(lease.project_id, lease.run_id, lease.token, kind, payload,
                                         created_by=role, expected_previous_version=latest[kind].version if kind in latest else 0,
                                         parent_refs=inputs)
-                if response.markdown and role == "Requirement":
-                    prior = latest.get("requirements_markdown")
-                    self.store.put(lease.project_id, lease.run_id, lease.token, "requirements_markdown",
+                if response.markdown and role in {"Requirement", "Architecture"}:
+                    md_kind = "requirements_markdown" if role == "Requirement" else "document"
+                    prior = latest.get(md_kind)
+                    self.store.put(lease.project_id, lease.run_id, lease.token, md_kind,
                                    response.markdown, created_by=role, expected_previous_version=prior.version if prior else 0,
                                    parent_refs=[actual])
                 response.payload = payload

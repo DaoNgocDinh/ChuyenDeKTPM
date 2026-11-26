@@ -4,7 +4,9 @@ import json
 
 from pydantic import ValidationError
 
-from .contracts import Requirements
+from .approvals import ApprovalService
+from .architecture_view import render_architecture, validate_architecture
+from .contracts import Architecture, Requirements
 from .llm import ModelError, invoke
 
 
@@ -44,7 +46,25 @@ class DesignAgents:
         self.skills = skills
         self.model = model
 
-    def _generate(self, role, instructions, facts, schema, validate=None):
+    def _generate(self, role, instructions, facts, schema, validate=None, bound=None, *, allow_blocker=False):
+        bound = bound or {}
+        output_schema = schema.model_json_schema()
+        for field in bound:
+            del output_schema["properties"][field]
+            output_schema["required"].remove(field)
+        if allow_blocker:
+            arch_schema = output_schema
+            defs = arch_schema.pop("$defs", None)
+            arch_schema["properties"]["blocker"] = {"type": "null"}
+            blocker_schema = {
+                "type": "object",
+                "properties": {"blocker": {"type": "string", "minLength": 1}},
+                "required": ["blocker"],
+                "additionalProperties": False,
+            }
+            output_schema = {"anyOf": [arch_schema, blocker_schema]}
+            if defs:
+                output_schema["$defs"] = defs
         prompt = (
             f"Vai trò {role}. {instructions}\n"
             + self.skills.context(role)
@@ -53,7 +73,7 @@ class DesignAgents:
         attempts = []
         for attempt in range(2):
             try:
-                reply = self.model(prompt, schema.model_json_schema())
+                reply = self.model(prompt, output_schema)
             except ModelError as error:
                 attempts.append(error.usage)
                 if attempt or error.code not in {"schema_invalid", "missing_structured_output"}:
@@ -65,8 +85,13 @@ class DesignAgents:
                 **reply.usage, "prompt_sha256": reply.prompt_sha256,
                 "config_sha256": reply.config_sha256, "model": reply.model,
             })
+            raw_output = dict(reply.output) if isinstance(reply.output, dict) else reply.output
+            if allow_blocker and isinstance(raw_output, dict):
+                blocker = raw_output.pop("blocker", None)
+                if isinstance(blocker, str) and blocker.strip():
+                    raise ModelError(f"{role.lower()}_blocked", aggregate_usage(attempts))
             try:
-                data = schema.model_validate(reply.output)
+                data = schema.model_validate({**raw_output, **bound} if isinstance(raw_output, dict) else raw_output)
                 if validate:
                     validate(data)
             except (ValidationError, ValueError) as error:
@@ -91,6 +116,8 @@ class DesignAgents:
     def dispatch(self, order):
         from .orchestrator import RoleOutput
 
+        if order.role == "Architecture":
+            return self._architecture(order)
         if order.role != "Requirement":
             raise ValueError(f"Unsupported design role: {order.role}")
         config = order.context.get("config", {})
@@ -110,3 +137,36 @@ class DesignAgents:
             "Mỗi trường hợp sử dụng nằm trong mô tả FR và tiêu chí của nó.", facts, Requirements,
         )
         return RoleOutput(payload=requirements, usage=usage, markdown=render_requirements(requirements))
+
+    def _approved_requirements(self, order, ref):
+        requirements = self._read_input(order, ref, "requirements", Requirements)
+        gates = ApprovalService(self.store.database)
+        if requirements.questions or not gates.is_gate_approved(
+            order.project_id, order.run_id, "requirements", [ref]
+        ):
+            raise ValueError("Requirements need clarification or approval at gate 1")
+        return requirements
+
+    def _architecture(self, order):
+        from .orchestrator import RoleOutput
+
+        if len(order.inputs) != 1:
+            raise ValueError("Architecture needs one approved requirements artifact")
+        ref = order.inputs[0]
+        requirements = self._approved_requirements(order, ref)
+        facts = {"requirements": requirements.model_dump(), "stack": ["FastAPI", "React", "SQLite"],
+                 "revision_feedback": order.context.get("feedback", [])}
+        if order.context.get("routing_bug"):
+            facts["routing_bug"] = order.context["routing_bug"]
+        architecture, usage = self._generate(
+            order.role, "Thiết kế trên stack cố định trong facts. Nêu tên từng công nghệ ở components. "
+            "Mỗi api_contract có khóa 'METHOD /path' và giá trị là một CHUỖI JSON biểu diễn một "
+            "OpenAPI operation gồm summary, responses (mã HTTP -> object có description), requestBody "
+            "nếu cần, và parameters hợp lệ cho path. Nêu liên kết, khóa, validation ở entities. "
+            "Mỗi FR phải ánh xạ đến ít nhất một tên trong components. Tham chiếu phiên bản do host gắn. "
+            "Nếu có mâu thuẫn không thể đáp ứng trên stack này, trả nguyên nhân qua trường blocker "
+            "để Orchestrator đưa về chủ dự án xử lý (đặt blocker là null khi khả thi).",
+            facts, Architecture, lambda design: validate_architecture(design, requirements, ref),
+            bound={"requirements": ref}, allow_blocker=True,
+        )
+        return RoleOutput(payload=architecture, usage=usage, markdown=render_architecture(architecture))
