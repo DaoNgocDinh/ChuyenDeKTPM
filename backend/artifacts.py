@@ -20,6 +20,14 @@ TEXT_KINDS = {"requirements_markdown", "document", "log", "runner_output", "patc
 SEGMENT = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}")
 
 
+def publish_file(source, target):
+    if os.name == "nt":
+        # Windows rename fails on an existing destination and needs no hard-link privilege.
+        os.rename(source, target)
+    else:
+        os.link(source, target)
+
+
 def check_file_type(path, *, directory):
     info = path.lstat()
     reparse = getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
@@ -85,7 +93,7 @@ class ArtifactStore:
         target = directory / filename
         try:
             try:
-                os.link(temp_path, target)
+                publish_file(temp_path, target)
             except FileExistsError:
                 check_file_type(target, directory=False)
                 if target.read_bytes() != data:

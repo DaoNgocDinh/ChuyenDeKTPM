@@ -64,11 +64,16 @@ class Database:
                 raise StorageConflict("Incomplete platform migration")
 
     @contextmanager
-    def transaction(self, *, write=False):
+    def _connection_transaction(self, *, write=False):
         with closing(self._connect()) as db, db:
             if not write:
                 db.execute("PRAGMA query_only=ON")
             db.execute("BEGIN IMMEDIATE" if write else "BEGIN")
+            yield db
+
+    @contextmanager
+    def transaction(self, *, write=False):
+        with self._connection_transaction(write=write) as db:
             yield Repository(db)
 
 
@@ -110,7 +115,8 @@ class Repository:
             (project_id, idempotency_key),
         ).fetchone()
         if previous is not None:
-            if json.loads(previous["config_json"]) != config or json.loads(previous["budget_json"]) != budget:
+            prior_budget = json.loads(previous["budget_json"])
+            if json.loads(previous["config_json"]) != config or prior_budget.get("submitted_budget", prior_budget) != budget:
                 raise StorageConflict("Idempotency key already belongs to different run inputs")
             return previous["id"]
         run_id = new_id()
@@ -170,7 +176,7 @@ class RunReader:
     def records(self, table):
         if table not in TABLES_BY_RUN:
             raise ValueError("Unknown collection of run records")
-        rows = self._db.execute(f"SELECT * FROM {table} WHERE run_id=?", (self.run_id,))
+        rows = self._db.execute(f"SELECT * FROM {table} WHERE run_id=? ORDER BY rowid", (self.run_id,))
         return [dict(row) for row in rows]
 
     def events_after(self, cursor=0, limit=100):
