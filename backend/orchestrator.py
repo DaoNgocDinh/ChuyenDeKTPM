@@ -303,6 +303,25 @@ class Orchestrator:
         self._check_dev(lease, workspace, dev_payload.input_commit, dev, allow_descendant_tests=True)
         return dev, dev_ref, workspace.head() != dev_payload.output_commit
 
+    def _can_resume_in_progress(self, lease, workspace, task_id, repairs):
+        if workspace.status() or (workspace.path / "logs" / "pending-patch.json").exists():
+            return False
+        with self.database.transaction() as repo:
+            view = repo.for_run(lease.project_id, lease.run_id)
+            steps = view.records("agent_steps")
+            tool_calls = view.records("tool_calls")
+        if any(s["status"] == "started" for s in steps):
+            return False
+        attempt = repairs + 1
+        dev_steps = [
+            s for s in steps
+            if s["task_id"] == task_id and s["agent_role"] == "dev" and s["attempt"] == attempt
+        ]
+        if not dev_steps or dev_steps[-1]["status"] not in {"model_error", "rejected"}:
+            return False
+        step_ids = {s["id"] for s in dev_steps}
+        return not any(tc["step_id"] in step_ids and tc["tool_name"] == "workspace.apply_patch" for tc in tool_calls)
+
     def _check_test(self, lease, workspace, dev, result):
         report = result.payload
         if report.commit != workspace.head() or not result.report_id:
@@ -341,6 +360,7 @@ class Orchestrator:
             ready = None
             resuming_patch = False
             resuming_waiting_test = False
+            resuming_in_progress = False
             has_tester_commits = False
             if recovered:
                 ready = next((
@@ -358,6 +378,17 @@ class Orchestrator:
                 ), None)
                 if ready is not None:
                     resuming_waiting_test = True
+            if ready is None:
+                ready = next((
+                    t for t in plan.tasks
+                    if rows[_task_key(refs[2], t.task_id)]["status"] == "in_progress"
+                    and all(rows[_task_key(refs[2], d)]["status"] == "done" for d in t.dependencies)
+                    and self._can_resume_in_progress(
+                        lease, workspace, _task_key(refs[2], t.task_id), rows[_task_key(refs[2], t.task_id)]["repair_round"]
+                    )
+                ), None)
+                if ready is not None:
+                    resuming_in_progress = True
             if ready is None:
                 ready = next((t for t in plan.tasks if rows[_task_key(refs[2], t.task_id)]["status"] in {"todo","ready","rework"}
                               and all(rows[_task_key(refs[2], d)]["status"] == "done" for d in t.dependencies)), None)
@@ -401,9 +432,10 @@ class Orchestrator:
                 ctx = {**context, "task": ready.model_dump(), "attempt": repairs + 1,
                        "input_commit": dev.payload.input_commit}
             else:
-                if current == "todo":
-                    current, repairs = self._move_task(lease, key, current, "dependencies_done", repairs)
-                current, repairs = self._move_task(lease, key, current, "start", repairs)
+                if not resuming_in_progress:
+                    if current == "todo":
+                        current, repairs = self._move_task(lease, key, current, "dependencies_done", repairs)
+                    current, repairs = self._move_task(lease, key, current, "start", repairs)
                 self._stage(lease, "development")
                 base = workspace.head()
                 ctx = {**context, "task": ready.model_dump(), "attempt": repairs + 1, "input_commit": base}

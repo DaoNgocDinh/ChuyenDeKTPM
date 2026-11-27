@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -184,7 +185,7 @@ def decode_result(stdout: str, returncode: int, schema: dict) -> tuple[dict, dic
 
 
 def invoke(prompt: str, output_schema: dict, *, tool_schemas: dict[str, dict] | None = None,
-           timeout_seconds: int = 180) -> ModelReply:
+           timeout_seconds: int = 300) -> ModelReply:
     if not prompt.strip() or timeout_seconds <= 0:
         raise ValueError("A prompt and positive timeout are required")
     binary = shutil.which("agy")
@@ -229,6 +230,7 @@ def invoke(prompt: str, output_schema: dict, *, tool_schemas: dict[str, dict] | 
             "--print-timeout", f"{timeout_seconds}s", "--log-file", os.devnull,
         ]
         from backend.recovery import OperationCancelled, controlled_command
+        started_at = time.monotonic()
         try:
             completed = controlled_command(
                 argv, cwd=workspace, env=env, input=input_line, timeout=timeout_seconds + 10,
@@ -239,7 +241,17 @@ def invoke(prompt: str, output_schema: dict, *, tool_schemas: dict[str, dict] | 
             raise ModelError("provider_timeout") from None
         except OSError:
             raise ModelError("provider_unavailable") from None
-    data, usage = decode_result(completed.stdout, completed.returncode, schema)
+        elapsed = time.monotonic() - started_at
+    try:
+        data, usage = decode_result(completed.stdout, completed.returncode, schema)
+    except ModelError as exc:
+        if (
+            exc.code == "missing_structured_output"
+            and elapsed >= max(1, timeout_seconds - 2)
+            and not exc.usage.get("output_tokens")
+        ):
+            raise ModelError("provider_timeout", exc.usage) from None
+        raise
     return ModelReply(
         model=MODEL, output=data["output"], tool_proposals=data["tool_proposals"],
         usage=usage, usage_complete={"input_tokens", "output_tokens"} <= usage.keys(),
