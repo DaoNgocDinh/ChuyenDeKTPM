@@ -11,6 +11,7 @@ from backend.coding_agents import CodingAgents
 from backend.llm import ModelReply, invoke
 from backend.storage import Database
 from backend.workspace import Edit, Workspace
+from tests.test_tester_agent import make_gateway_client_factory
 
 
 class DevAgentTest(unittest.IsolatedAsyncioTestCase):
@@ -58,6 +59,29 @@ class DevAgentTest(unittest.IsolatedAsyncioTestCase):
         coding = CodingAgents(self.store,"fixture",model=lambda *_: self.fail("unexpected model call"))
         with self.assertRaisesRegex(ValueError,"approval"):
             await coding.execute(self.order)
+
+    async def test_dependent_dev_task_receives_existing_prior_app_files(self):
+        prior_commit = self.ws.apply(
+            "t0", self.base, [Edit("app/db.py", None, "def init_db():\n    return 'ready'\n")],
+        )["output_commit"]
+        self.activate_fixture()
+        order = SimpleNamespace(**{**vars(self.order), "context": {**self.order.context, "input_commit": prior_commit}})
+        seen_prompts = []
+
+        def fixture(prompt, schema):
+            seen_prompts.append(prompt)
+            return ModelReply("fixture", {
+                "summary": "implement message using db",
+                "blocker": None,
+                "files": [{"path": "app/message.py", "text": "from app.db import init_db\n\ndef greeting():\n    return 'hello'\n"}],
+            }, [], {"input_tokens": 20, "output_tokens": 10}, True, "1" * 64, "2" * 64)
+
+        coding = CodingAgents(self.store, "local-python-test", model=fixture, client_factory=make_gateway_client_factory())
+        result = await coding.execute(order)
+        self.assertEqual(len(seen_prompts), 1)
+        self.assertIn("app/db.py", seen_prompts[0])
+        self.assertIn("def init_db()", seen_prompts[0])
+        self.assertEqual(result["payload"].changed_files, ["app/message.py"])
 
     @unittest.skipUnless(os.getenv("KTPM_TEST_RUNNER_IMAGE"),"requires a local Docker test image")
     async def test_commit_and_real_runner(self):

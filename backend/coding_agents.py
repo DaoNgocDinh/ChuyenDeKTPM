@@ -268,9 +268,21 @@ class CodingAgents:
             read_files = {}
             for p in paths:
                 read_files[p] = await tool("workspace.read_file", path=p)
+            read_size = len(json.dumps(read_files, ensure_ascii=False))
+            # Provide existing app/ files from prior tasks as read context so dependent tasks see real interfaces.
+            prior_app_paths = sorted(
+                p for p in existing
+                if p.startswith("app/") and p not in read_files and not p.endswith("package-lock.json")
+            )
+            for p in prior_app_paths:
+                observed = await tool("workspace.read_file", path=p)
+                entry_size = len(json.dumps({p: observed}, ensure_ascii=False))
+                if read_size + entry_size > 120_000:
+                    break
+                read_files[p] = observed
+                read_size += entry_size
             test_files = {}
             if bug_report:
-                read_size = len(json.dumps(read_files, ensure_ascii=False))
                 for p in sorted(f for f in existing if f.startswith("tests_dev/")):
                     observed = await tool("workspace.read_file", path=p)
                     entry_size = len(json.dumps({p: observed}, ensure_ascii=False))

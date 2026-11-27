@@ -96,6 +96,18 @@ class AdapterTest(unittest.TestCase):
         self.assertEqual(reply.output, {"title": "OK"})
         self.assertTrue(seen_kwargs and seen_kwargs[0].get("ignore_cleanup_errors") is True)
 
+    @patch("backend.llm.shutil.which", return_value="agy")
+    def test_invoke_maps_agy_stderr_print_timeout_to_provider_timeout(self, _which):
+        fake = subprocess.CompletedProcess(
+            ["agy"], 0,
+            '{"event":"init","init":{"permission_mode":"strict"}}\n'
+            '{"event":"result","result":{"status":"SUCCESS","response":"","usage":{"input_tokens":10,"output_tokens":3}}}\n',
+            'AGY_ERROR: {"status":"DEADLINE_EXCEEDED","reason":"print_timeout"}\n',
+        )
+        with patch("backend.llm.subprocess.run", return_value=fake):
+            with self.assertRaisesRegex(ModelError, "provider_timeout"):
+                invoke("test", TITLE_SCHEMA, timeout_seconds=5)
+
     @unittest.skipUnless(os.getenv("SDLC_LIVE_MODEL") == "1", "Set SDLC_LIVE_MODEL=1 to call agy")
     def test_live(self):
         result = invoke("A task manager needs a list of tasks. Give this brief a short title. "

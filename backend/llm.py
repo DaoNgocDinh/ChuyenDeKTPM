@@ -242,16 +242,20 @@ def invoke(prompt: str, output_schema: dict, *, tool_schemas: dict[str, dict] | 
         except OSError:
             raise ModelError("provider_unavailable") from None
         elapsed = time.monotonic() - started_at
+    stderr_text = completed.stderr or ""
+    timed_out_by_cli = '"reason":"print_timeout"' in stderr_text or "DEADLINE_EXCEEDED" in stderr_text
     try:
         data, usage = decode_result(completed.stdout, completed.returncode, schema)
     except ModelError as exc:
-        if (
+        if timed_out_by_cli or (
             exc.code == "missing_structured_output"
             and elapsed >= max(1, timeout_seconds - 2)
             and not exc.usage.get("output_tokens")
         ):
             raise ModelError("provider_timeout", exc.usage) from None
         raise
+    if timed_out_by_cli:
+        raise ModelError("provider_timeout", usage)
     return ModelReply(
         model=MODEL, output=data["output"], tool_proposals=data["tool_proposals"],
         usage=usage, usage_complete={"input_tokens", "output_tokens"} <= usage.keys(),
