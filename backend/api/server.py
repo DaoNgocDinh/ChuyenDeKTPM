@@ -17,7 +17,8 @@ from backend.approvals import ApprovalService, ApprovalVersionConflict, InvalidG
 from backend.artifacts import ArtifactStore
 from backend.contracts import ArtifactRef as ContractArtifactRef
 from backend.exporter import ExportPathError, SecretLeakError, build_export_zip
-from backend.lifecycle import RunState, run_transition
+from backend.lifecycle import RunState
+from backend.recovery import RecoveryService
 from backend.storage import Database, StorageConflict, encode, new_id
 from backend.trace import TraceAuditService
 from backend.worker import Queue
@@ -259,6 +260,7 @@ def create_app(
     queue = Queue(database)
     approvals = ApprovalService(database)
     audit = TraceAuditService(database)
+    recovery = RecoveryService(database, store)
 
     app = FastAPI(
         title="Chuyên đề KTPM – API cục bộ",
@@ -536,76 +538,27 @@ def create_app(
     def cancel_run(run_id: str) -> dict:
         run_row = _find_run(run_id)
         project_id = run_row["project_id"]
+        if run_row["status"] in {RunState.COMPLETED.value, RunState.FAILED.value, RunState.CANCELLED.value}:
+            raise ApiError(409, "invalid_transition", "Run chưa ở trạng thái cho phép hủy.")
         try:
-            next_state = run_transition(RunState(run_row["status"]), "cancel")
-        except ValueError as exc:
-            raise ApiError(409, "invalid_transition", "Run chưa ở trạng thái cho phép hủy.") from exc
-        with database.transaction(write=True) as repo:
-            fresh = repo.get_run(project_id, run_id)
-            try:
-                next_state = run_transition(RunState(fresh["status"]), "cancel")
-            except ValueError as exc:
-                raise ApiError(409, "invalid_transition", "Run chưa ở trạng thái cho phép hủy.") from exc
-            checkpoint = json.loads(fresh["checkpoint_json"] or "{}")
-            checkpoint.pop("pending_gate", None)
-            checkpoint.pop("pending_questions", None)
-            checkpoint["cancelled_from"] = fresh["status"]
-            repo._db.execute(
-                "UPDATE runs SET status=?, worker_lease=NULL, lease_expires_at=NULL, "
-                "checkpoint_json=?, ended_at=CURRENT_TIMESTAMP WHERE id=?",
-                (next_state.value, encode(checkpoint), run_id),
-            )
-            repo._db.execute(
-                "INSERT INTO events(run_id, step_id, event_type, payload_json) VALUES (?, NULL, ?, ?)",
-                (run_id, "run.cancelled", encode({"from": fresh["status"], "status": next_state.value})),
-            )
+            outcome = recovery.cancel(project_id, run_id, wait_seconds=1)
+        except StorageConflict as exc:
+            raise ApiError(409, "invalid_transition", str(exc)) from exc
         if on_cancel is not None:
             on_cancel(project_id, run_id)
-        return {"project_id": project_id, "run_id": run_id, "status": next_state.value}
+        return {"project_id": project_id, "run_id": run_id, "status": outcome["status"]}
 
     @app.post("/runs/{run_id}/resume", status_code=202)
     def resume_run(run_id: str) -> dict:
         run_row = _find_run(run_id)
         project_id = run_row["project_id"]
-        current = RunState(run_row["status"])
-        if current == RunState.RECOVERY:
-            event_name = "reconciled"
-        elif current == RunState.REVIEW:
-            event_name = "owner_resume"
-        else:
-            raise ApiError(409, "invalid_transition", "Run chưa ở trạng thái cho phép khôi phục.")
-
-        # Refuse blind resume if a pending patch journal was left unresolved on disk.
-        journal = root / project_id / run_id / "logs" / "pending-patch.json"
-        if journal.exists():
-            raise ApiError(409, "invalid_transition", "Cần đối chiếu pending-patch.json trước khi tiếp tục.")
-
-        next_state = run_transition(current, event_name)
-        with database.transaction(write=True) as repo:
-            fresh = repo.get_run(project_id, run_id)
-            if fresh["status"] != current.value:
-                raise ApiError(409, "invalid_transition", "Trạng thái run đã thay đổi trước khi khôi phục.")
-            unresolved = repo._db.execute(
-                "SELECT id FROM agent_steps WHERE run_id=? AND status='started'", (run_id,)
-            ).fetchall()
-            if unresolved and current != RunState.RECOVERY:
-                raise ApiError(409, "invalid_transition", "Còn bước chạy chưa hoàn tất cần đối chiếu.")
-            for step in unresolved:
-                repo._db.execute(
-                    "UPDATE agent_steps SET status='interrupted' WHERE run_id=? AND id=? AND status='started'",
-                    (run_id, step["id"]),
-                )
-            checkpoint = json.loads(fresh["checkpoint_json"] or "{}")
-            checkpoint["resumed_from"] = current.value
-            repo._db.execute(
-                "UPDATE runs SET status=?, worker_lease=NULL, lease_expires_at=NULL, checkpoint_json=? WHERE id=?",
-                (next_state.value, encode(checkpoint), run_id),
-            )
-            repo._db.execute(
-                "INSERT INTO events(run_id, step_id, event_type, payload_json) VALUES (?, NULL, ?, ?)",
-                (run_id, "run.resumed", encode({"from": current.value, "status": next_state.value})),
-            )
-        return {"project_id": project_id, "run_id": run_id, "status": next_state.value}
+        try:
+            outcome = recovery.resume(project_id, run_id)
+        except StorageConflict as exc:
+            raise ApiError(409, "invalid_transition", "Run chưa ở trạng thái cho phép khôi phục.") from exc
+        if outcome["status"] != RunState.QUEUED.value:
+            raise ApiError(409, "invalid_transition", f"Không thể khôi phục: {outcome['reason']}.")
+        return {"project_id": project_id, "run_id": run_id, "status": outcome["status"]}
 
     @app.get("/runs/{run_id}/tasks")
     def get_tasks(run_id: str) -> list[dict]:

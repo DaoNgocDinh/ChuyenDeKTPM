@@ -1,6 +1,6 @@
 # I22 · Backend HTTP API cục bộ (nhánh `I22-api`)
 
-Hiện thực đầy đủ hợp đồng OpenAPI 3.1.1 đã duyệt tại [D10](openapi.json) và khớp trực tiếp với client React của `I23`–`I24` (`backend/api/app.py`):
+Hiện thực đầy đủ hợp đồng OpenAPI 3.1.1 đã duyệt tại [D10](openapi.json) và khớp trực tiếp với client React của `I23`–`I24` (`backend/api/server.py`):
 
 - **Phạm vi và bảo mật cục bộ:** `serve_local(...)` chỉ cho phép bind trên loopback (`127.0.0.1`, `localhost`, `::1`); mọi lỗi trả về thống nhất theo schema `{"code", "message"}` của D10 (`not_found`, `approval_version_conflict`, `invalid_transition`, `tool_denied`, `budget_exceeded`, `invalid_request`, `idempotency_conflict`).
 - **Đủ 14 endpoint D10 + `/health`:**
