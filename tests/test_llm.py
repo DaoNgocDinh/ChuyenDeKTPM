@@ -79,6 +79,23 @@ class AdapterTest(unittest.TestCase):
             invoke("test", TITLE_SCHEMA, timeout_seconds=1)
         self.assertEqual(run.call_count, 1)
 
+    @patch("backend.llm.shutil.which", return_value="agy")
+    def test_invoke_ignores_tempdir_cleanup_permission_error_on_windows(self, _which):
+        data = {"output": {"title": "OK"}, "tool_proposals": []}
+        real_tmp = tempfile.TemporaryDirectory
+        seen_kwargs = []
+
+        def spy_tmp(*args, **kwargs):
+            seen_kwargs.append(kwargs)
+            return real_tmp(*args, **kwargs)
+
+        fake = subprocess.CompletedProcess(["agy"], 0, response(data, {"input_tokens": 5, "output_tokens": 2}), "")
+        with patch("backend.llm.tempfile.TemporaryDirectory", side_effect=spy_tmp), \
+                patch("backend.llm.subprocess.run", return_value=fake):
+            reply = invoke("test", TITLE_SCHEMA, timeout_seconds=5)
+        self.assertEqual(reply.output, {"title": "OK"})
+        self.assertTrue(seen_kwargs and seen_kwargs[0].get("ignore_cleanup_errors") is True)
+
     @unittest.skipUnless(os.getenv("SDLC_LIVE_MODEL") == "1", "Set SDLC_LIVE_MODEL=1 to call agy")
     def test_live(self):
         result = invoke("A task manager needs a list of tasks. Give this brief a short title. "

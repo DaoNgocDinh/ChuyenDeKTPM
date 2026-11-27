@@ -682,7 +682,7 @@ def create_app(
         if not (ws.path / ".git").exists():
             raise ApiError(409, "invalid_transition", "Run chưa có commit mã nguồn để đóng gói xuất.")
         try:
-            with tempfile.TemporaryDirectory() as tmp:
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
                 out_zip = Path(tmp) / f"run-{run_id}.zip"
                 result = build_export_zip(
                     database, store, root, project_id, run_id, out_zip, secrets=export_secrets,

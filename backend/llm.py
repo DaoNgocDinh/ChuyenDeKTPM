@@ -208,7 +208,7 @@ def invoke(prompt: str, output_schema: dict, *, tool_schemas: dict[str, dict] | 
     )
     env = {name: os.environ[name] for name in env_names if name in os.environ}
     env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
-    with tempfile.TemporaryDirectory(prefix="sdlc-inference-") as directory:
+    with tempfile.TemporaryDirectory(prefix="sdlc-inference-", ignore_cleanup_errors=True) as directory:
         workspace = Path(directory)
         agents = workspace / ".agents" / "agents"
         agents.mkdir(parents=True)
