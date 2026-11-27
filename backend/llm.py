@@ -117,6 +117,15 @@ def envelope_schema(output_schema: dict, tool_schemas: dict[str, dict]) -> dict:
     }
 
 
+def _strip_json_fence(raw: str) -> str:
+    text = raw.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if len(lines) >= 3 and lines[0].startswith("```") and lines[-1].strip() == "```":
+            return "\n".join(lines[1:-1]).strip()
+    return text
+
+
 def decode_result(stdout: str, returncode: int, schema: dict) -> tuple[dict, dict]:
     try:
         events = [json.loads(line) for line in stdout.splitlines() if line.strip()]
@@ -153,16 +162,16 @@ def decode_result(stdout: str, returncode: int, schema: dict) -> tuple[dict, dic
         data = result.get("structured_output")
         if data is None:
             try:
-                # agy 1.4.12 can concatenate identical JSON values after its internal schema retries.
-                raw = result["response"].strip()
+                # agy 1.4.12 can concatenate identical JSON values or wrap JSON in a single markdown fence.
+                raw = _strip_json_fence(result["response"])
                 decoder = json.JSONDecoder()
                 data, end = decoder.raw_decode(raw)
-                tail = raw[end:].lstrip()
+                tail = _strip_json_fence(raw[end:])
                 while tail:
                     duplicate, end = decoder.raw_decode(tail)
                     if duplicate != data:
                         raise ValueError("Ambiguous response")
-                    tail = tail[end:].lstrip()
+                    tail = _strip_json_fence(tail[end:])
             except (KeyError, ValueError, TypeError, AttributeError):
                 raise ModelError("missing_structured_output", usage) from None
         try:
@@ -175,7 +184,7 @@ def decode_result(stdout: str, returncode: int, schema: dict) -> tuple[dict, dic
 
 
 def invoke(prompt: str, output_schema: dict, *, tool_schemas: dict[str, dict] | None = None,
-           timeout_seconds: int = 90) -> ModelReply:
+           timeout_seconds: int = 180) -> ModelReply:
     if not prompt.strip() or timeout_seconds <= 0:
         raise ValueError("A prompt and positive timeout are required")
     binary = shutil.which("agy")
