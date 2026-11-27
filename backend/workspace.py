@@ -121,8 +121,18 @@ class Workspace:
                 raise ValueError("expected full Git commit id")
         return self.git("diff", "--no-ext-diff", "--no-textconv", before, after, "--", "app", "tests_dev")
 
-    def apply(self, task_id, input_commit, edits):
+    def operation_receipt(self, operation_id):
+        _id(operation_id)
+        path = self.path / "logs" / f"op-{operation_id}.json"
+        _check_node(path)
+        if not path.is_file():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def apply(self, task_id, input_commit, edits, *, operation_id=None):
         _id(task_id)
+        if operation_id is not None:
+            _id(operation_id)
         if not edits or len(edits) > self.count_limit:
             raise ValueError("invalid number of patch files")
         patch_id = uuid4().hex
@@ -166,6 +176,8 @@ class Workspace:
                                        sort_keys=True, separators=(",", ":")).encode()
                 receipt = dict(patch_id=patch_id, task_id=task_id, input_commit=input_commit,
                                patch_hash=content_hash(canonical))
+                if operation_id is not None:
+                    receipt["operation_id"] = operation_id
                 json.dump(receipt, lock)
                 lock.flush()
                 os.fsync(lock.fileno())
@@ -184,6 +196,12 @@ class Workspace:
                 json.dump(receipt, f, ensure_ascii=False)
                 f.flush()
                 os.fsync(f.fileno())
+            if operation_id is not None:
+                op_file = self.path / "logs" / f"op-{operation_id}.json"
+                with op_file.open("x", encoding="utf-8") as f:
+                    json.dump(receipt, f, ensure_ascii=False)
+                    f.flush()
+                    os.fsync(f.fileno())
             committed = True
             return receipt
         finally:

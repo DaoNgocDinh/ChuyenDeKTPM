@@ -219,11 +219,13 @@ def invoke(prompt: str, output_schema: dict, *, tool_schemas: dict[str, dict] | 
             "--input-format", "stream-json", "--output-format", "stream-json",
             "--print-timeout", f"{timeout_seconds}s", "--log-file", os.devnull,
         ]
+        from backend.recovery import OperationCancelled, controlled_command
         try:
-            completed = subprocess.run(
-                argv, cwd=workspace, env=env, input=input_line, capture_output=True,
-                encoding="utf-8", errors="replace", timeout=timeout_seconds + 10,
+            completed = controlled_command(
+                argv, cwd=workspace, env=env, input=input_line, timeout=timeout_seconds + 10,
             )
+        except OperationCancelled:
+            raise
         except subprocess.TimeoutExpired:
             raise ModelError("provider_timeout") from None
         except OSError:

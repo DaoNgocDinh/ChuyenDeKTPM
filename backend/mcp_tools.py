@@ -18,7 +18,8 @@ from mcp.server.stdio import stdio_server
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.artifacts import ArtifactStore
-from backend.gateway import Gateway, HostStep, ToolDenied, allowed_file
+from backend.gateway import CURRENT_OPERATION, Gateway, HostStep, ToolDenied, allowed_file
+from backend.recovery import RunSignal
 from backend.storage import Database
 from backend.workspace import Edit, content_hash
 
@@ -126,7 +127,8 @@ class ToolSession:
             data = ws.read(model.path)
             return {"text": data.decode("utf-8"), "sha256": content_hash(data)}
         if name == "workspace.apply_patch":
-            return ws.apply(step["task_id"], model.input_commit, [Edit(**e.model_dump()) for e in model.edits])
+            return ws.apply(step["task_id"], model.input_commit, [Edit(**e.model_dump()) for e in model.edits],
+                            operation_id=CURRENT_OPERATION.get())
         if name == "git.status":
             return {"head": ws.head(), "status": ws.status()}
         if name == "git.diff":
@@ -143,7 +145,13 @@ class ToolSession:
         from backend.docker_runner import DockerRunner
         host = self.host
         runner = DockerRunner(self.image, ws.path / "logs" / "suites")
-        report = runner.run(ws.path, ws.head(), model.suite_id)
+        sig = RunSignal(self.database, host.project_id, host.run_id, host.lease)
+        res_key = sig.started("docker_runner")
+        report = None
+        try:
+            report = runner.run(ws.path, ws.head(), model.suite_id, cancel=sig)
+        finally:
+            sig.stopped(res_key, confirmed=(report is not None and report.get("status") != "cleanup_error"))
         with self.database.transaction() as repo:
             previous = repo.for_run(host.project_id, host.run_id).latest_version("runner_output")
         ref = self.artifacts.put(host.project_id, host.run_id, host.lease, "runner_output",
