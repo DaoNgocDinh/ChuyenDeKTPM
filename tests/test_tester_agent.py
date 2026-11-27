@@ -19,7 +19,7 @@ from backend.coding_agents import BugDiagnosis, CodingAgents, ReviewReport, Test
 from backend.contracts import DevResult
 from backend.docker_runner import snapshot
 from backend.gateway import HostStep, ToolDenied
-from backend.llm import ModelReply, envelope_schema, invoke
+from backend.llm import ModelError, ModelReply, envelope_schema, invoke
 from backend.mcp_tools import OP_KEY, SCHEMAS, TOOLS, ToolSession, step_client
 from backend.storage import Database
 from backend.workspace import Edit, Workspace
@@ -418,6 +418,32 @@ class TesterAgentTest(unittest.IsolatedAsyncioTestCase):
         result = await coding.execute(order)
         self.assertFalse(result["payload"].all_passed)
         self.assertEqual(result["bug"].category, "infrastructure")
+
+    async def test_tester_retries_once_on_schema_invalid_and_merges_usage(self):
+        order = self._prepare_dev_delivery(
+            "def divide(a, b):\n    if b == 0:\n        raise ValueError('zero')\n    return a / b\n"
+        )
+        calls = 0
+
+        def flaky_model(prompt, schema):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise ModelError("schema_invalid", {"input_tokens": 50, "output_tokens": 20})
+            self.assertIn("Previous response did not match the JSON schema", prompt)
+            return ModelReply("fixture", {
+                "summary": "Retried valid TesterPlan",
+                "suite_id": "development",
+                "test_files": [{"path": "tests_dev/test_calc.py", "text": "from app.calc import divide\n\ndef test_ok():\n    assert divide(6, 2) == 3\n"}],
+                "review_findings": [],
+            }, [], {"input_tokens": 60, "output_tokens": 30}, True, "1" * 64, "2" * 64)
+
+        coding = CodingAgents(self.store, "local-python-test", model=flaky_model, client_factory=make_gateway_client_factory())
+        result = await coding.execute(order)
+        self.assertEqual(calls, 2)
+        self.assertTrue(result["payload"].all_passed)
+        self.assertEqual(result["usage"]["input_tokens"], 110)
+        self.assertEqual(result["usage"]["output_tokens"], 50)
 
     @unittest.skipUnless(os.getenv("KTPM_TEST_RUNNER_IMAGE"), "requires a local Docker test image")
     async def test_tester_with_real_docker_runner(self):

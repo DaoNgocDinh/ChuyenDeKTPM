@@ -1,8 +1,10 @@
 """Run named host-approved suites on a Git commit. The caller owns repo and report paths."""
 
+from contextlib import contextmanager
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -23,6 +25,23 @@ BOOTSTRAP = "/opt/ktpm/suite.py"
 
 class Interrupted(Exception):
     pass
+
+
+@contextmanager
+def _staging_dir():
+    """Create a temporary bind-mount staging folder readable by Docker Desktop on Windows."""
+    if os.name == "nt":
+        # Python 3.13+ tempfile.mkdtemp(0o700) writes a protected DACL stripping inherited user ACEs;
+        # when Python runs elevated (Administrator), non-elevated Docker Desktop then gets Access Denied.
+        path = Path(tempfile.gettempdir()) / f"ktpm-stage-{uuid.uuid4().hex}"
+        path.mkdir(parents=False, exist_ok=False)
+        try:
+            yield str(path)
+        finally:
+            shutil.rmtree(path, ignore_errors=True)
+    else:
+        with tempfile.TemporaryDirectory(prefix="ktpm-stage-") as temporary:
+            yield temporary
 
 
 def snapshot(repo, commit, stage, secrets=()):
@@ -177,7 +196,7 @@ class DockerRunner:
             return bounded_command([self.docker, *args], deadline, cancelled, limits)
 
         container_requested = False
-        with tempfile.TemporaryDirectory() as temporary:
+        with _staging_dir() as temporary:
             try:
                 stage = Path(temporary, "snapshot")
                 snapshot(repo, commit, stage, [v.encode() for v in self.secrets])

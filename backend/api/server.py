@@ -167,6 +167,16 @@ def _event_message(event_type: str, payload: dict) -> str:
     return event_type
 
 
+MODEL_ERROR_MESSAGES = {
+    "provider_quota": "Model tạm chạm giới hạn/quota (provider_quota). Đợi ít phút rồi bấm Khôi phục (resume).",
+    "provider_timeout": "Model phản hồi quá thời gian (provider_timeout). Bạn có thể bấm Khôi phục (resume) để thử lại.",
+    "authentication_required": "Chưa xác thực CLI agy (authentication_required). Hãy đăng nhập lại agy rồi bấm Khôi phục.",
+    "provider_unavailable": "Không tìm thấy hoặc không gọi được CLI agy (provider_unavailable).",
+    "schema_invalid": "Đầu ra model chưa khớp schema JSON (schema_invalid). Bấm Khôi phục (resume) để thử lại bước này.",
+    "missing_structured_output": "Model không trả về JSON có cấu trúc (missing_structured_output). Bấm Khôi phục (resume) để thử lại.",
+}
+
+
 def _extract_last_error(run_row: dict, events: list[dict]) -> dict | None:
     status = run_row["status"]
     budget = json.loads(run_row["budget_json"] or "{}")
@@ -179,16 +189,38 @@ def _extract_last_error(run_row: dict, events: list[dict]) -> dict | None:
         "time_limit_exceeded",
     }:
         return {"code": "budget_exceeded", "message": f"Run dừng do vượt hạn mức ({stop_reason})."}
-    for row in reversed(events):
-        etype = row["event_type"]
-        payload = json.loads(row["payload_json"] or "{}")
-        if etype in {"quota_exceeded", "budget.exceeded"}:
-            return {"code": "budget_exceeded", "message": "Run đã chạm ngưỡng hạn mức được cấp."}
-        if etype == "tool.denied":
-            tool = payload.get("tool", "unknown")
-            return {"code": "tool_denied", "message": f"Công cụ bị chặn bởi Gateway ({tool})."}
-        if etype in {"handoff.rejected", "invalid_handoff"} and status in {"needs_human_review", "failed"}:
-            return {"code": "invalid_request", "message": f"Đầu ra agent không hợp lệ ({payload.get('reason', etype)})."}
+    recent = events
+    for idx in range(len(events) - 1, -1, -1):
+        if events[idx]["event_type"] == "claimed":
+            recent = events[idx:]
+            break
+    for scope in (recent, events):
+        for row in reversed(scope):
+            etype = row["event_type"]
+            payload = json.loads(row["payload_json"] or "{}")
+            if etype in {"quota_exceeded", "budget.exceeded"}:
+                return {"code": "budget_exceeded", "message": "Run đã chạm ngưỡng hạn mức được cấp."}
+            if etype == "tool.denied":
+                tool = payload.get("tool", "unknown")
+                return {"code": "tool_denied", "message": f"Công cụ bị chặn bởi Gateway ({tool})."}
+            if etype == "model.failed" and status in {"needs_human_review", "failed"}:
+                mcode = str(payload.get("code", "provider_error"))
+                msg = MODEL_ERROR_MESSAGES.get(mcode, f"Lỗi gọi model ({mcode}). Bấm Khôi phục (resume) để thử lại.")
+                return {"code": "invalid_request", "message": msg}
+            if etype == "handoff.rejected" and status in {"needs_human_review", "failed"}:
+                # Let a preceding model.failed in the same attempt take precedence when present.
+                if any(r["event_type"] == "model.failed" for r in scope):
+                    continue
+                detail = payload.get("detail") or payload.get("reason", etype)
+                return {"code": "invalid_request", "message": f"Đầu ra agent không hợp lệ ({detail})."}
+            if etype == "needs_evidence" and status in {"needs_human_review", "failed"}:
+                return {"code": "invalid_transition", "message": "Thiếu bằng chứng kiểm chứng để đi tiếp (needs_evidence)."}
+            if etype == "invalid_handoff" and status in {"needs_human_review", "failed"}:
+                if any(r["event_type"] in {"model.failed", "handoff.rejected"} for r in scope):
+                    continue
+                return {"code": "invalid_request", "message": f"Đầu ra agent không hợp lệ ({payload.get('reason', etype)})."}
+        if scope is recent and recent is events:
+            break
     if status in {"needs_human_review", "failed"}:
         return {"code": "invalid_transition", "message": f"Run đang ở trạng thái {status}, cần kiểm tra."}
     return None

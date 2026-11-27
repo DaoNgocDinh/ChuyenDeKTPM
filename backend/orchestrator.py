@@ -227,10 +227,21 @@ class Orchestrator:
                                                  "repair_round": repairs})
         return target.value, repairs
 
-    def _check_dev(self, lease, workspace, base, result):
+    def _check_dev(self, lease, workspace, base, result, *, allow_descendant_tests=False):
         dev, patch = result.payload, result.patch_ref
-        if dev.input_commit != base or dev.output_commit != workspace.head() or not patch or patch.run_id != lease.run_id:
+        if dev.input_commit != base or not patch or patch.run_id != lease.run_id:
             raise InvalidHandoff("Dev result does not match the workspace commit and patch")
+        head = workspace.head()
+        if dev.output_commit != head:
+            if not allow_descendant_tests:
+                raise InvalidHandoff("Dev result does not match the workspace commit and patch")
+            workspace.git("merge-base", "--is-ancestor", dev.output_commit, head)
+            extra = [
+                name for name in workspace.git("diff", "--name-only", "-z", dev.output_commit, head).strip("\0").split("\0")
+                if name
+            ]
+            if not extra or any(not name.startswith("tests_dev/") for name in extra):
+                raise InvalidHandoff("Workspace diverged outside tests_dev after Dev commit")
         with self.database.transaction() as repo:
             stored = repo.for_run(lease.project_id, lease.run_id).artifact(patch.artifact_id, patch.version)
         if stored["type"] != "patch":
@@ -246,6 +257,42 @@ class Orchestrator:
         if dev.patch_sha256 != patch.sha256 and (len(subject) != 3 or subject[0] != dev.task_id + ":"
                                                 or subject[-1] != dev.patch_sha256):
             raise InvalidHandoff("Patch hash differs from Git checkpoint and artifact")
+
+    def _recover_waiting_test(self, lease, workspace, task_id):
+        if workspace.status():
+            raise InvalidHandoff("Workspace has uncommitted changes while resuming waiting_test task")
+        with self.database.transaction() as repo:
+            artifacts = repo.for_run(lease.project_id, lease.run_id).records("artifacts")
+        dev_rows = sorted((a for a in artifacts if a["type"] == "dev_result"), key=lambda a: a["version"], reverse=True)
+        dev_ref = None
+        dev_payload = None
+        for row in dev_rows:
+            candidate_ref = _ref(row)
+            candidate = self._read(lease, candidate_ref, DevResult)
+            if candidate.task_id == task_id:
+                dev_ref = candidate_ref
+                dev_payload = candidate
+                break
+        if dev_ref is None or dev_payload is None:
+            raise InvalidHandoff("Missing verified DevResult for waiting_test task")
+        expected_diff = workspace.diff(dev_payload.input_commit, dev_payload.output_commit).encode()
+        if not expected_diff:
+            raise InvalidHandoff("Dev commit diff is empty")
+        patch_rows = sorted((a for a in artifacts if a["type"] == "patch"), key=lambda a: a["version"], reverse=True)
+        patch_ref = None
+        for row in patch_rows:
+            candidate_patch = _ref(row)
+            content = self.store.read(
+                lease.project_id, lease.run_id, candidate_patch.artifact_id, candidate_patch.version, candidate_patch.sha256
+            )
+            if content == expected_diff:
+                patch_ref = candidate_patch
+                break
+        if patch_ref is None:
+            raise InvalidHandoff("Missing matching patch artifact for waiting_test task")
+        dev = RoleOutput(payload=dev_payload, patch_ref=patch_ref)
+        self._check_dev(lease, workspace, dev_payload.input_commit, dev, allow_descendant_tests=True)
+        return dev, dev_ref, workspace.head() != dev_payload.output_commit
 
     def _check_test(self, lease, workspace, dev, result):
         report = result.payload
@@ -284,6 +331,8 @@ class Orchestrator:
             recovered = checkpoint.get("recovered_patch")
             ready = None
             resuming_patch = False
+            resuming_waiting_test = False
+            has_tester_commits = False
             if recovered:
                 ready = next((
                     t for t in plan.tasks
@@ -292,6 +341,14 @@ class Orchestrator:
                 ), None)
                 if ready is not None:
                     resuming_patch = True
+            if ready is None:
+                ready = next((
+                    t for t in plan.tasks
+                    if rows[_task_key(refs[2], t.task_id)]["status"] == "waiting_test"
+                    and all(rows[_task_key(refs[2], d)]["status"] == "done" for d in t.dependencies)
+                ), None)
+                if ready is not None:
+                    resuming_waiting_test = True
             if ready is None:
                 ready = next((t for t in plan.tasks if rows[_task_key(refs[2], t.task_id)]["status"] in {"todo","ready","rework"}
                               and all(rows[_task_key(refs[2], d)]["status"] == "done" for d in t.dependencies)), None)
@@ -330,6 +387,10 @@ class Orchestrator:
                 self._update_checkpoint(lease, recovered_patch=None, output_commit=recovered["output_commit"])
                 ctx = {**context, "task": ready.model_dump(), "attempt": repairs + 1,
                        "input_commit": recovered["input_commit"]}
+            elif resuming_waiting_test:
+                dev, dev_ref, has_tester_commits = self._recover_waiting_test(lease, workspace, key)
+                ctx = {**context, "task": ready.model_dump(), "attempt": repairs + 1,
+                       "input_commit": dev.payload.input_commit}
             else:
                 if current == "todo":
                     current, repairs = self._move_task(lease, key, current, "dependencies_done", repairs)
@@ -364,6 +425,8 @@ class Orchestrator:
                     "dev_result": dev.payload.model_dump(),
                     "infra_retry": infra_retries,
                 }
+                if resuming_waiting_test and has_tester_commits:
+                    tester_ctx["resume_tester"] = True
                 tester, report_ref = self._call(lease, "Tester", [*refs, dev_ref, dev.patch_ref], tester_ctx, key)
                 row = self._check_test(lease, workspace, dev.payload, tester)
                 for fr in ready.requirement_ids:
@@ -484,8 +547,12 @@ class Orchestrator:
         except BudgetExceededError:
             return "quota_exceeded"
         except (InvalidHandoff, ValueError, KeyError) as exc:
+            detail = str(exc).strip()[:240]
+            payload = {"reason": type(exc).__name__}
+            if detail:
+                payload["detail"] = detail
             self.audit.record_event(lease.project_id, lease.run_id, lease.token, "handoff.rejected",
-                                    {"reason": type(exc).__name__}, correlation_id=new_id(), error_category="schema")
+                                    payload, correlation_id=new_id(), error_category="schema")
             with self.database.transaction() as repo:
                 steps = repo.for_run(lease.project_id, lease.run_id).records("agent_steps")
             if any(step["status"] == "started" for step in steps):

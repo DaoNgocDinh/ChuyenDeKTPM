@@ -243,6 +243,12 @@ export function ApprovalView({ client, runId }: ApprovalViewProps) {
 
           <hr />
           <h3>Gửi quyết định cổng duyệt</h3>
+          {run && run.status !== "waiting_approval" && (
+            <div className="alert warn" role="status">
+              Run hiện ở trạng thái <strong>{run.status}</strong>, không đang chờ duyệt cổng. Hãy sang tab{" "}
+              <strong>2. Theo dõi Run</strong> để xem chi tiết lỗi hoặc bấm <strong>Khôi phục (resume)</strong>.
+            </div>
+          )}
           <form onSubmit={handleSubmitDecision} className="stack">
             <label>
               <span>Cổng duyệt</span>
@@ -307,7 +313,7 @@ export function ApprovalView({ client, runId }: ApprovalViewProps) {
               />
             </label>
 
-            <button type="submit" disabled={busy}>
+            <button type="submit" disabled={busy || (run !== null && run.status !== "waiting_approval")}>
               {busy ? "Đang ghi quyết định..." : "Xác nhận quyết định cổng"}
             </button>
           </form>

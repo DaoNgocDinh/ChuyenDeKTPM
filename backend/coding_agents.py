@@ -1,17 +1,18 @@
 """Dev and Tester consume trusted work orders and use real, step-bound MCP tools."""
 
 import asyncio
+from dataclasses import replace
 import json
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from backend.approvals import ApprovalService
 from backend.contracts import ArtifactRef, BugReport, DevResult, TestReport
 from backend.gateway import HostStep
-from backend.llm import invoke as infer
+from backend.llm import ModelError, invoke as infer
 from backend.mcp_tools import discover, invoke, step_client
 from backend.skill_registry import RunSkills
 
@@ -164,12 +165,58 @@ class CodingAgents:
             raise ValueError("Tester requires DevResult context")
         dev = DevResult.model_validate(raw_dev)
         infra_retry = int(order.context.get("infra_retry", 0) or 0)
+        resume_tester = bool(order.context.get("resume_tester"))
         input_commit = order.context.get("input_commit")
-        if dev.task_id != order.task_id or not input_commit or (infra_retry == 0 and dev.output_commit != input_commit):
+        if dev.task_id != order.task_id or not input_commit or (
+            infra_retry == 0 and not resume_tester and dev.output_commit != input_commit
+        ):
             raise ValueError("DevResult does not match assigned task or commit")
         if not self.image:
             raise ValueError("missing Docker runner image")
         return dev
+
+    async def _call_structured_model(self, prompt, schema_cls):
+        schema = schema_cls.model_json_schema()
+        attempts_usage = []
+        current_prompt = prompt
+
+        def merge_attempts():
+            merged = {}
+            for key in ("input_tokens", "output_tokens", "cache_read_tokens", "thinking_tokens", "total_tokens"):
+                vals = [u[key] for u in attempts_usage if key in u and isinstance(u[key], int)]
+                if vals:
+                    merged[key] = sum(vals)
+            return merged
+
+        for attempt in range(2):
+            try:
+                reply = await asyncio.to_thread(self.model, current_prompt, schema)
+            except ModelError as exc:
+                attempts_usage.append(exc.usage)
+                if attempt or exc.code not in {"schema_invalid", "missing_structured_output"}:
+                    exc.usage = merge_attempts()
+                    raise
+                current_prompt = (
+                    prompt
+                    + "\nPrevious response did not match the JSON schema (" + exc.code
+                    + "). Return ONLY one valid JSON object matching the schema with empty tool_proposals."
+                )
+                continue
+            attempts_usage.append(reply.usage)
+            try:
+                parsed = schema_cls.model_validate(reply.output)
+                if len(attempts_usage) > 1:
+                    reply = replace(reply, usage=merge_attempts())
+                return reply, parsed
+            except ValidationError as exc:
+                if attempt:
+                    raise ModelError("schema_invalid", merge_attempts()) from None
+                reason = exc.errors(include_input=False)[0]["msg"]
+                current_prompt = (
+                    prompt
+                    + "\nPrevious JSON failed schema validation: " + reason
+                    + ". Fix the fields and return ONLY one valid JSON object matching the schema."
+                )
 
     def _artifact(self, order, kind, content, *, extra_parents=()):
         with self.db.transaction() as repo:
@@ -253,8 +300,7 @@ class CodingAgents:
                       "For a frontend task include the reproducible npm lockfile. Respond with JSON and "
                       "empty tool_proposals. Host applies the patch and runs a real suite. Task data:\n"
                       + json.dumps(details, ensure_ascii=False))
-            reply = await asyncio.to_thread(self.model, prompt, PatchPlan.model_json_schema())
-            proposal = PatchPlan.model_validate(reply.output)
+            reply, proposal = await self._call_structured_model(prompt, PatchPlan)
             self._log_model(order, reply, descriptor, phase="dev")
             if proposal.blocker or not proposal.files:
                 raise ValueError("Dev blocked: " + (proposal.blocker or "empty patch"))
@@ -341,8 +387,7 @@ class CodingAgents:
                 "tool_proposals. Host applies the patch and runs the real suite. Review data:\n"
                 + json.dumps(details, ensure_ascii=False)
             )
-            plan_reply = await asyncio.to_thread(self.model, plan_prompt, TesterPlan.model_json_schema())
-            plan_out = TesterPlan.model_validate(plan_reply.output)
+            plan_reply, plan_out = await self._call_structured_model(plan_prompt, TesterPlan)
             self._log_model(order, plan_reply, descriptor, phase="tester_plan")
             replies = [plan_reply]
 
@@ -452,8 +497,7 @@ class CodingAgents:
                     "tool_proposals. Failure evidence:\n"
                     + json.dumps(diag_data, ensure_ascii=False)
                 )
-                diag_reply = await asyncio.to_thread(self.model, diag_prompt, BugDiagnosis.model_json_schema())
-                diagnosis = BugDiagnosis.model_validate(diag_reply.output)
+                diag_reply, diagnosis = await self._call_structured_model(diag_prompt, BugDiagnosis)
                 self._log_model(order, diag_reply, descriptor, phase="tester_diagnosis")
                 replies.append(diag_reply)
 

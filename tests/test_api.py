@@ -343,3 +343,29 @@ class PlatformApiTests(unittest.TestCase):
         resumed = self.client.post(f"/runs/{run_id}/resume")
         self.assertEqual(resumed.status_code, 202)
         self.assertEqual(resumed.json()["status"], "queued")
+
+    def test_last_error_surfaces_model_failed_code_over_generic_invalid_handoff(self):
+        pid = self.client.post("/projects", json={"name": "A1", "brief": "Task app"}).json()["project_id"]
+        run_id = self.client.post(f"/projects/{pid}/runs", json={"idempotency_key": "err-1"}).json()["run_id"]
+        with self.db.transaction(write=True) as repo:
+            repo._db.execute("UPDATE runs SET status='needs_human_review' WHERE id=?", (run_id,))
+            repo._db.execute(
+                "INSERT INTO events(run_id, step_id, event_type, payload_json) VALUES (?, NULL, 'claimed', '{}')",
+                (run_id,),
+            )
+            repo._db.execute(
+                "INSERT INTO events(run_id, step_id, event_type, payload_json) VALUES (?, NULL, 'model.failed', ?)",
+                (run_id, json.dumps({"code": "provider_quota"})),
+            )
+            repo._db.execute(
+                "INSERT INTO events(run_id, step_id, event_type, payload_json) VALUES (?, NULL, 'handoff.rejected', ?)",
+                (run_id, json.dumps({"reason": "InvalidHandoff"})),
+            )
+            repo._db.execute(
+                "INSERT INTO events(run_id, step_id, event_type, payload_json) VALUES (?, NULL, 'invalid_handoff', ?)",
+                (run_id, json.dumps({"status": "needs_human_review"})),
+            )
+
+        detail = self.client.get(f"/runs/{run_id}").json()
+        self.assertEqual(detail["last_error"]["code"], "invalid_request")
+        self.assertIn("provider_quota", detail["last_error"]["message"])

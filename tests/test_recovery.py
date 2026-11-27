@@ -14,6 +14,7 @@ from pathlib import Path
 from backend.artifacts import ArtifactStore
 from backend.contracts import ArtifactRef
 from backend.gateway import CURRENT_OPERATION, Gateway, HostStep
+from backend.llm import ModelError
 from backend.orchestrator import Orchestrator, RoleOutput
 from backend.recovery import RecoveryService, controlled_command
 from backend.storage import Database, StorageConflict, encode
@@ -343,3 +344,89 @@ class RecoveryAndCancelTests(unittest.TestCase):
         resumed = self.recovery.resume(self.project, run_id)
         self.assertEqual(resumed, {"status": "queued", "reason": "resume_at_checkpoint"})
         self.assertEqual(self._run_row(run_id)["status"], "queued")
+
+    def test_resume_after_tester_model_error_reenters_tester_without_replaying_dev(self):
+        run_id = self.queue.enqueue(self.project, "resume-waiting-test", {}, {})
+        counts = {"Dev": 0, "Tester": 0}
+
+        def dispatch(order):
+            role = order.role
+            if role == "Orchestrator":
+                return RoleOutput({"decision": "approve"})
+            if role == "Requirement":
+                return RoleOutput({
+                    "actors": ["Owner"],
+                    "functional": [{"id": "FR1", "description": "Greeting", "acceptance": ["OK"]}],
+                    "nonfunctional": [], "assumptions": [], "questions": [],
+                })
+            if role == "Architecture":
+                return RoleOutput({
+                    "requirements": order.inputs[0].model_dump(), "adr": ["Python"],
+                    "components": {"app": "py"}, "entities": {"Msg": "str"},
+                    "api_contract": {"GET /": "ok"}, "frontend": "web",
+                    "test_strategy": "unit", "fr_components": {"FR1": ["app"]},
+                })
+            if role == "Planning":
+                return RoleOutput({
+                    "requirements": order.inputs[0].model_dump(),
+                    "architecture": order.inputs[1].model_dump(),
+                    "tasks": [{
+                        "task_id": "t1", "requirement_ids": ["FR1"], "dependencies": [],
+                        "files": ["app/greet.py"], "done_conditions": ["OK=True"], "tests": ["unit"],
+                    }],
+                })
+            ws = Workspace(self.ws_root, self.project, run_id)
+            if role == "Dev":
+                counts["Dev"] += 1
+                receipt = ws.apply(order.task_id, ws.head(), [Edit("app/greet.py", None, "OK = True\n")])
+                with self.db.transaction() as repo:
+                    ver = repo.for_run(self.project, run_id).latest_version("patch")
+                patch = self.store.put(
+                    self.project, run_id, order.lease_token, "patch", receipt["diff"],
+                    created_by="Dev", expected_previous_version=ver, parent_refs=order.inputs,
+                )
+                return RoleOutput({
+                    "task_id": order.task_id, "input_commit": receipt["input_commit"],
+                    "output_commit": receipt["output_commit"], "patch_sha256": receipt["patch_hash"],
+                    "changed_files": ["app/greet.py"], "summary": "implement greet",
+                }, patch_ref=patch)
+            counts["Tester"] += 1
+            if counts["Tester"] == 1:
+                raise ModelError("provider_quota", {"input_tokens": 120, "output_tokens": 40})
+            test_code = "from app.greet import OK\nassert OK\n"
+            ws.apply(order.task_id, ws.head(), [Edit("tests_dev/test_greet.py", None, test_code)])
+            commit = ws.head()
+            proc = subprocess.run([sys.executable, "-B", "-c", test_code], cwd=ws.path, capture_output=True)
+            with self.db.transaction() as repo:
+                ver = repo.for_run(self.project, run_id).latest_version("runner_output")
+            raw = self.store.put(
+                self.project, run_id, order.lease_token, "runner_output",
+                json.dumps({"exit_code": proc.returncode, "passed": 1}),
+                created_by="runner", expected_previous_version=ver,
+            )
+            with self.db.transaction(write=True) as repo:
+                writer = repo.worker_run(self.project, run_id, order.lease_token)
+                rid = writer.add_report(order.task_id, commit, "development", "reports/t1", proc.returncode, 1, 0, 0, 0, 5)
+            return RoleOutput({
+                "task_id": order.task_id, "commit": commit, "suite_id": "development",
+                "runner_output": raw.model_dump(), "exit_code": proc.returncode,
+                "passed": 1, "failures": 0, "errors": 0, "skipped": 0,
+            }, report_id=rid)
+
+        host = Orchestrator(self.queue, self.store, dispatch, lambda lease, refs: True)
+        worker = Worker(self.queue, host)
+        worker.run_one()
+        self._approve_gate(host, run_id, "requirements")
+        worker.run_one()
+        self._approve_gate(host, run_id, "architecture_plan")
+        worker.run_one()
+
+        self.assertEqual(self._run_row(run_id)["status"], "needs_human_review")
+        self.assertEqual(counts, {"Dev": 1, "Tester": 1})
+
+        resumed = self.recovery.resume(self.project, run_id)
+        self.assertEqual(resumed, {"status": "queued", "reason": "resume_at_checkpoint"})
+
+        worker.run_one()
+        self.assertEqual(self._run_row(run_id)["status"], "completed")
+        self.assertEqual(counts, {"Dev": 1, "Tester": 2})
