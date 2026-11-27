@@ -118,13 +118,18 @@ def envelope_schema(output_schema: dict, tool_schemas: dict[str, dict]) -> dict:
     }
 
 
-def _strip_json_fence(raw: str) -> str:
-    text = raw.strip()
+def _peel_json_block(raw: str) -> tuple[str, str]:
+    """Strip one leading markdown code fence block if present, returning (block, remainder)."""
+    text = raw.lstrip()
     if text.startswith("```"):
-        lines = text.splitlines()
-        if len(lines) >= 3 and lines[0].startswith("```") and lines[-1].strip() == "```":
-            return "\n".join(lines[1:-1]).strip()
-    return text
+        first_nl = text.find("\n")
+        if first_nl != -1:
+            body = text[first_nl + 1:]
+            close = body.find("\n```")
+            if close != -1:
+                after = body[close + 4:]
+                return body[:close].strip(), after.lstrip()
+    return text, ""
 
 
 def decode_result(stdout: str, returncode: int, schema: dict) -> tuple[dict, dict]:
@@ -142,11 +147,11 @@ def decode_result(stdout: str, returncode: int, schema: dict) -> tuple[dict, dic
         if returncode or result.get("status") != "SUCCESS":
             message = str(result.get("error", "")).lower()
             code = "provider_error"
-            if "timeout" in message or result.get("status") == "TIMEOUT":
+            if "timeout" in message or "deadline" in message or result.get("status") == "TIMEOUT":
                 code = "provider_timeout"
-            elif "authentication" in message:
+            elif "authentication" in message or "unauthenticated" in message:
                 code = "authentication_required"
-            elif "quota" in message or "rate limit" in message:
+            elif any(tok in message for tok in ("quota", "rate limit", "resource_exhausted", "429")):
                 code = "provider_quota"
             raise ModelError(code, usage)
         init = [event["init"] for event in events if event["event"] == "init"]
@@ -163,16 +168,26 @@ def decode_result(stdout: str, returncode: int, schema: dict) -> tuple[dict, dic
         data = result.get("structured_output")
         if data is None:
             try:
-                # agy 1.4.12 can concatenate identical JSON values or wrap JSON in a single markdown fence.
-                raw = _strip_json_fence(result["response"])
+                # agy 1.4.12 can concatenate multiple JSON blocks, sometimes mixing fenced and raw JSON.
                 decoder = json.JSONDecoder()
-                data, end = decoder.raw_decode(raw)
-                tail = _strip_json_fence(raw[end:])
-                while tail:
-                    duplicate, end = decoder.raw_decode(tail)
-                    if duplicate != data:
+                remaining = result["response"].strip()
+                data = None
+                while remaining:
+                    chunk, after_fence = _peel_json_block(remaining)
+                    if after_fence or remaining.startswith("```"):
+                        value, end = decoder.raw_decode(chunk)
+                        if chunk[end:].strip():
+                            raise ValueError("Trailing text inside fenced JSON block")
+                        remaining = after_fence
+                    else:
+                        value, end = decoder.raw_decode(remaining)
+                        remaining = remaining[end:].lstrip()
+                    if data is None:
+                        data = value
+                    elif value != data:
                         raise ValueError("Ambiguous response")
-                    tail = _strip_json_fence(tail[end:])
+                if data is None:
+                    raise ValueError("Empty response")
             except (KeyError, ValueError, TypeError, AttributeError):
                 raise ModelError("missing_structured_output", usage) from None
         try:
@@ -197,9 +212,10 @@ def invoke(prompt: str, output_schema: dict, *, tool_schemas: dict[str, dict] | 
         "agent": AGENT_SPEC, "deny_hook": DENY_NATIVE_TOOL, "timeout_seconds": timeout_seconds,
     }
     request = (
-        "Return a single JSON object matching the supplied schema. Put all domain fields under "
-        "'output'. Use [] for tool_proposals when there are no proposed actions. Do not call "
-        "any tools.\nJSON Schema:\n" + json.dumps(schema, ensure_ascii=False)
+        "Return a single raw JSON object matching the supplied schema. Do NOT wrap the JSON in "
+        "markdown code fences (no ```json or ```). Put all domain fields under 'output'. "
+        "Use [] for tool_proposals when there are no proposed actions. Do not call any tools.\n"
+        "JSON Schema:\n" + json.dumps(schema, ensure_ascii=False)
         + "\nUser task:\n" + prompt
     )
     input_line = json.dumps({"event": "user", "message": {"content": request}}) + "\n"

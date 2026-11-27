@@ -39,6 +39,9 @@ class AdapterTest(unittest.TestCase):
         def wire():
             return "\n".join(json.dumps(event) for event in events)
         self.assertEqual(decode_result(wire(), 0, EMPTY_TOOLS)[0], data)
+        # Mixed fenced first turn followed by raw JSON duplicate turns (observed from agy 1.4.12).
+        events[1]["result"]["response"] = f"```json\n{json.dumps(data)}\n```\n{json.dumps(data)}\n"
+        self.assertEqual(decode_result(wire(), 0, EMPTY_TOOLS)[0], data)
         events[1]["result"]["response"] += "{}"
         with self.assertRaisesRegex(ModelError, "missing_structured_output"):
             decode_result(wire(), 0, EMPTY_TOOLS)
