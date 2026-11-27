@@ -131,6 +131,15 @@ class Orchestrator:
                                     correlation_id=checkpoint["operation_id"], step_id=step_id, error_category="environment")
             self._quota(lease)
             raise InvalidHandoff("Model did not return a validated result") from exc
+        except (ValueError, KeyError) as exc:
+            with self.database.transaction() as repo:
+                touched_tools = any(
+                    tc["step_id"] == step_id for tc in repo.for_run(lease.project_id, lease.run_id).records("tool_calls")
+                )
+            if not touched_tools:
+                self.queue.finish_step(lease, step_id, "rejected", [], checkpoint)
+                raise InvalidHandoff(str(exc)) from exc
+            raise
         if not isinstance(response, RoleOutput):
             raise TypeError("Dispatcher must return RoleOutput")
         actual = None

@@ -430,3 +430,60 @@ class RecoveryAndCancelTests(unittest.TestCase):
         worker.run_one()
         self.assertEqual(self._run_row(run_id)["status"], "completed")
         self.assertEqual(counts, {"Dev": 1, "Tester": 2})
+
+    def test_interrupted_read_only_planning_step_resumes_while_dev_still_blocks(self):
+        run_id = self.queue.enqueue(self.project, "resume-planning", {}, {})
+        crash_once = {"armed": True}
+
+        def dispatch(order):
+            role = order.role
+            if role == "Orchestrator":
+                return RoleOutput({"decision": "approve"})
+            if role == "Requirement":
+                return RoleOutput({
+                    "actors": ["Owner"],
+                    "functional": [{"id": "FR1", "description": "Greeting", "acceptance": ["OK"]}],
+                    "nonfunctional": [], "assumptions": [], "questions": [],
+                })
+            if role == "Architecture":
+                return RoleOutput({
+                    "requirements": order.inputs[0].model_dump(), "adr": ["Python"],
+                    "components": {"app": "py"}, "entities": {"Msg": "str"},
+                    "api_contract": {"GET /": "ok"}, "frontend": "web",
+                    "test_strategy": "unit", "fr_components": {"FR1": ["app"]},
+                })
+            if role == "Planning":
+                if crash_once["armed"]:
+                    crash_once["armed"] = False
+                    raise PermissionError("simulated windows tempdir cleanup lock")
+                return RoleOutput({
+                    "requirements": order.inputs[0].model_dump(),
+                    "architecture": order.inputs[1].model_dump(),
+                    "tasks": [{
+                        "task_id": "t1", "requirement_ids": ["FR1"], "dependencies": [],
+                        "files": ["app/greet.py"], "done_conditions": ["OK=True"], "tests": ["unit"],
+                    }],
+                })
+            self.fail(f"Unexpected role {role}")
+
+        host = Orchestrator(self.queue, self.store, dispatch, lambda lease, refs: True)
+        worker = Worker(self.queue, host)
+        worker.run_one()
+        self._approve_gate(host, run_id, "requirements")
+        with self.assertRaises(PermissionError):
+            worker.run_one()
+
+        self.assertEqual(self._run_row(run_id)["status"], "pending_recovery")
+        resumed = self.recovery.resume(self.project, run_id)
+        self.assertEqual(resumed, {"status": "queued", "reason": "resume_at_checkpoint"})
+
+        worker.run_one()
+        self.assertEqual(self._run_row(run_id)["status"], "waiting_approval")
+
+        # Contrast: an interrupted Dev step without an operation receipt MUST remain blocked.
+        dev_run = self.queue.enqueue(self.project, "dev-no-receipt", {}, {})
+        lease = self.queue.claim()
+        self.queue.start_step(lease, "s-dev", "Dev", 1, [], {"operation_id": "op-dev"})
+        self.queue.release(lease, "effects_uncertain")
+        blocked = self.recovery.resume(self.project, dev_run)
+        self.assertEqual(blocked, {"status": "pending_recovery", "reason": "missing_operation_receipt"})

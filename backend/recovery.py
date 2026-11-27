@@ -16,6 +16,7 @@ from .workspace import Workspace
 
 
 CURRENT_SIGNAL = contextvars.ContextVar("current_run_signal", default=None)
+READ_ONLY_ROLES = frozenset({"orchestrator", "requirement", "architecture", "planning"})
 
 
 class OperationCancelled(RuntimeError):
@@ -174,7 +175,7 @@ class RecoveryService:
                 status = repo.get_run(project_id, run_id)["status"]
         return {"status": status, "reason": "cancelled" if status == "cancelled" else "awaiting_process_cleanup"}
 
-    def _evidence(self, project_id, run_id, checkpoint, steps, tasks=()):
+    def _evidence(self, project_id, run_id, checkpoint, steps, tasks=(), tool_calls=()):
         if any(t["status"] == "blocked" for t in tasks):
             raise ValueError("task_blocked_needs_human")
         for raw in checkpoint.get("input_refs", []):
@@ -192,7 +193,24 @@ class RecoveryService:
         effect = checkpoint.get("pending_effect")
         active = [s for s in steps if s["status"] == "started"]
         if not effect:
-            if active or checkpoint.get("phase") == "before":
+            if active:
+                if (
+                    len(active) == 1
+                    and active[0]["agent_role"] in READ_ONLY_ROLES
+                    and not any(tc["step_id"] == active[0]["id"] for tc in tool_calls)
+                    and (not checkpoint.get("step_id") or checkpoint.get("step_id") == active[0]["id"])
+                ):
+                    if checkpoint.get("output_commit"):
+                        ws = Workspace(self.store.root, project_id, run_id)
+                        if ws.head() != checkpoint["output_commit"] or ws.status():
+                            raise ValueError("workspace_changed")
+                    elif (self.store.root / project_id / run_id / ".git").exists():
+                        ws = Workspace(self.store.root, project_id, run_id)
+                        if ws.status():
+                            raise ValueError("workspace_changed")
+                    return {"_read_only_step_id": active[0]["id"]}
+                raise ValueError("missing_operation_receipt")
+            if checkpoint.get("phase") == "before":
                 raise ValueError("missing_operation_receipt")
             if checkpoint.get("output_commit"):
                 ws = Workspace(self.store.root, project_id, run_id)
@@ -227,24 +245,41 @@ class RecoveryService:
             reader = repo.for_run(project_id, run_id)
             steps = reader.records("agent_steps")
             tasks = reader.records("tasks")
+            tool_calls = reader.records("tool_calls")
             live = _active_resources(repo, project_id, run_id)
         if run["status"] not in ("pending_recovery", "needs_human_review") or checkpoint.get("cancel_requested"):
             raise StorageConflict("Run cannot be resumed from this state")
         if run["worker_lease"] is not None or live:
             return {"status": run["status"], "reason": "active_lease_or_process"}
         try:
-            receipt = self._evidence(project_id, run_id, checkpoint, steps, tasks)
+            evidence = self._evidence(project_id, run_id, checkpoint, steps, tasks, tool_calls)
         except (ValueError, KeyError, OSError, subprocess.SubprocessError) as exc:
             reason = str(exc) if isinstance(exc, ValueError) and str(exc).isidentifier() else "evidence_unavailable"
             with self.database.transaction(write=True) as repo:
                 _event(repo, run_id, "recovery.blocked", {"reason": reason})
             return {"status": run["status"], "reason": reason}
+        read_only_step_id = evidence.get("_read_only_step_id") if isinstance(evidence, dict) else None
+        receipt = None if read_only_step_id else evidence
         with self.database.transaction(write=True) as repo:
             current = repo.get_run(project_id, run_id)
             if (current["status"], current["checkpoint_json"], current["worker_lease"]) != (
                     run["status"], run["checkpoint_json"], None):
                 raise StorageConflict("Run changed during reconciliation")
-            if receipt:
+            if read_only_step_id:
+                step_row = repo._db.execute(
+                    "SELECT status, agent_role FROM agent_steps WHERE run_id=? AND id=?",
+                    (run_id, read_only_step_id),
+                ).fetchone()
+                has_tools = repo._db.execute(
+                    "SELECT 1 FROM tool_calls WHERE run_id=? AND step_id=? LIMIT 1",
+                    (run_id, read_only_step_id),
+                ).fetchone()
+                if not step_row or step_row["status"] != "started" or step_row["agent_role"] not in READ_ONLY_ROLES or has_tools:
+                    return {"status": current["status"], "reason": "step_or_task_changed"}
+                repo._db.execute("UPDATE agent_steps SET status='reconciled' WHERE run_id=? AND id=?",
+                                 (run_id, read_only_step_id))
+                checkpoint["phase"] = "after"
+            elif receipt:
                 effect = checkpoint["pending_effect"]
                 operation = repo._db.execute(
                     "SELECT * FROM tool_calls WHERE run_id=? AND operation_id=? AND step_id=?",
@@ -266,5 +301,8 @@ class RecoveryService:
                                  (run_id, effect["task_id"]))
                 checkpoint.pop("pending_effect")
             repo._db.execute("UPDATE runs SET status='queued',checkpoint_json=? WHERE id=?", (encode(checkpoint), run_id))
-            _event(repo, run_id, "recovery.reconciled", {"skip_applied_patch": bool(receipt)})
+            _event(repo, run_id, "recovery.reconciled", {
+                "skip_applied_patch": bool(receipt),
+                **({"reconciled_read_only_step": read_only_step_id} if read_only_step_id else {}),
+            })
         return {"status": "queued", "reason": "resume_at_tester" if receipt else "resume_at_checkpoint"}
