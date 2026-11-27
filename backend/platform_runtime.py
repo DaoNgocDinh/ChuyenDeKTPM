@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import threading
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -155,7 +156,21 @@ def run_local_platform(
         worker_thread.join(timeout=5)
 
 
+def _ensure_local_docker_on_path() -> None:
+    if shutil.which("docker") is not None or os.name != "nt":
+        return
+    candidates = [
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "DockerDesktop" / "resources" / "bin",
+        Path(r"C:\Program Files\Docker\Docker\resources\bin"),
+    ]
+    for folder in candidates:
+        if (folder / "docker.exe").is_file():
+            os.environ["PATH"] = str(folder) + os.pathsep + os.environ.get("PATH", "")
+            return
+
+
 def main() -> None:
+    _ensure_local_docker_on_path()
     parser = argparse.ArgumentParser(description="Run local SDLC multi-agent platform (API + Worker).")
     parser.add_argument("--db", default="data/platform.sqlite", help="SQLite database path")
     parser.add_argument("--workspaces", default="data/workspaces", help="Workspace root directory")
@@ -163,6 +178,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000, help="HTTP port")
     parser.add_argument("--image", default=os.getenv("KTPM_TEST_RUNNER_IMAGE"), help="Docker runner image ID")
     args = parser.parse_args()
+    print(f"Open Web UI at: http://{args.host}:{args.port}/")
     run_local_platform(args.db, args.workspaces, host=args.host, port=args.port, image=args.image)
 
 

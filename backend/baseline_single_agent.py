@@ -134,7 +134,10 @@ async def baseline_step_client(database_path, root, host: HostStep, image=None):
     env = {
         key: val
         for key, val in os.environ.items()
-        if key.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR", "LOCALAPPDATA"}
+        if key.upper() in {
+            "PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR",
+            "LOCALAPPDATA", "USERPROFILE", "HOME", "DOCKER_HOST", "DOCKER_CONTEXT",
+        }
     }
     env[CONFIG_VAR] = json.dumps(config)
     transport = StdioServerParameters(

@@ -10,7 +10,8 @@ from typing import Callable, Literal
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from backend.approvals import ApprovalService, ApprovalVersionConflict, InvalidGateTransition
@@ -713,6 +714,17 @@ def create_app(
                 ),
             )
         return {"run_id": run_id, "decision_id": decision_id, "status": run_row["status"]}
+
+    dist_dir = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+    index_file = dist_dir / "index.html"
+    assets_dir = dist_dir / "assets"
+    if index_file.is_file():
+        if assets_dir.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="frontend-assets")
+
+        @app.get("/", include_in_schema=False)
+        def serve_ui_index() -> FileResponse:
+            return FileResponse(index_file)
 
     return app
 

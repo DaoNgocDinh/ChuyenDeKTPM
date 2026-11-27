@@ -78,7 +78,10 @@ async def step_client(database_path, root, host: HostStep, image=None):
     config = {"database": str(Path(database_path).resolve()), "root": str(Path(root).resolve()),
               "host": asdict(host), "image": image}
     env = {key: val for key, val in os.environ.items()
-           if key.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR", "LOCALAPPDATA"}}
+           if key.upper() in {
+               "PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR",
+               "LOCALAPPDATA", "USERPROFILE", "HOME", "DOCKER_HOST", "DOCKER_CONTEXT",
+           }}
     env[CONFIG_VAR] = json.dumps(config)
     transport = StdioServerParameters(command=sys.executable, args=["-m", "backend.mcp_tools"],
                                       cwd=Path(__file__).resolve().parents[1], env=env)
